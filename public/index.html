@@ -18,7 +18,7 @@
             </div>
             <form id="login-form">
                 <div class="form-group">
-                    <label>E-mail Corporativo</label>
+                    <label>E-mail</label>
                     <input type="email" id="email" class="input-field" placeholder="admin@empresa.com" required>
                 </div>
                 <div class="form-group">
@@ -31,88 +31,42 @@
     </div>
 
     <div id="app-layout" class="app-layout hidden">
-        
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">Code<span>IA</span></div>
             </div>
-            
             <nav class="sidebar-nav">
-                <button onclick="navigate('dashboard')" class="nav-item active" id="nav-dashboard">
-                    <i data-lucide="layout-dashboard"></i> <span>Visão Geral</span>
-                </button>
-                <button onclick="navigate('agents')" class="nav-item" id="nav-agents">
-                    <i data-lucide="bot"></i> <span>Meus Agentes</span>
-                </button>
-                <button onclick="navigate('chat')" class="nav-item" id="nav-chat">
-                    <i data-lucide="message-square"></i> <span>Testar Chat</span>
-                </button>
-                <button onclick="navigate('calendar')" class="nav-item" id="nav-calendar">
-                    <i data-lucide="calendar"></i> <span>Agenda</span>
-                </button>
+                <button onclick="navigate('dashboard')" class="nav-item active" id="nav-dashboard"><i data-lucide="layout-dashboard"></i> <span>Visão Geral</span></button>
+                <button onclick="navigate('agents')" class="nav-item" id="nav-agents"><i data-lucide="bot"></i> <span>Meus Agentes</span></button>
+                <button onclick="navigate('chat')" class="nav-item" id="nav-chat"><i data-lucide="message-square"></i> <span>Testar Chat</span></button>
+                <button onclick="navigate('calendar')" class="nav-item" id="nav-calendar"><i data-lucide="calendar"></i> <span>Agenda</span></button>
             </nav>
-
             <div class="sidebar-footer">
                 <div class="user-mini-profile">
                     <div class="avatar">👤</div>
-                    <div class="info">
-                        <span id="sidebar-user-name">Usuário</span>
-                        <small id="sidebar-user-role">Admin</small>
-                    </div>
+                    <div class="info"><span id="sidebar-user-name">User</span><small>Admin</small></div>
                 </div>
-                <button onclick="logout()" class="btn-icon-small" title="Sair">
-                    <i data-lucide="log-out"></i>
-                </button>
+                <button onclick="logout()" class="btn-icon-small"><i data-lucide="log-out"></i></button>
             </div>
         </aside>
 
         <main class="main-content">
             <header class="topbar">
                 <h2 id="page-title">Dashboard</h2>
-                <div class="topbar-actions">
-                    <button class="btn-icon" onclick="toggleTheme()" title="Tema">
-                        <i data-lucide="moon" id="icon-moon"></i>
-                        <i data-lucide="sun" id="icon-sun" class="hidden"></i>
-                    </button>
-                </div>
+                <button class="btn-icon" onclick="toggleTheme()"><i data-lucide="moon" id="icon-moon"></i><i data-lucide="sun" id="icon-sun" class="hidden"></i></button>
             </header>
 
             <div id="view-dashboard" class="view-section">
                 <div class="grid-stats">
-                    <div class="card stat-card">
-                        <div class="icon-box blue"><i data-lucide="users"></i></div>
-                        <div>
-                            <h3>Usuários</h3>
-                            <span class="stat-value" id="count-users">0</span>
-                        </div>
-                    </div>
-                    <div class="card stat-card">
-                        <div class="icon-box green"><i data-lucide="message-circle"></i></div>
-                        <div>
-                            <h3>Mensagens</h3>
-                            <span class="stat-value" id="count-messages">0</span>
-                        </div>
-                    </div>
-                    <div class="card stat-card">
-                        <div class="icon-box purple"><i data-lucide="calendar-check"></i></div>
-                        <div>
-                            <h3>Agendamentos</h3>
-                            <span class="stat-value" id="count-appointments">0</span>
-                        </div>
-                    </div>
+                    <div class="card stat-card"><div class="icon-box blue"><i data-lucide="users"></i></div><div><h3>Usuários</h3><span class="stat-value" id="count-users">0</span></div></div>
+                    <div class="card stat-card"><div class="icon-box green"><i data-lucide="message-circle"></i></div><div><h3>Mensagens</h3><span class="stat-value" id="count-messages">0</span></div></div>
+                    <div class="card stat-card"><div class="icon-box purple"><i data-lucide="calendar-check"></i></div><div><h3>Agendamentos</h3><span class="stat-value" id="count-appointments">0</span></div></div>
                 </div>
-
                 <div class="card whatsapp-card">
-                    <div class="wa-header">
-                        <h3><i data-lucide="smartphone"></i> Conexão WhatsApp</h3>
-                        <div id="whatsapp-badge" class="status-badge status-disconnected">OFFLINE</div>
-                    </div>
+                    <div class="wa-header"><h3><i data-lucide="smartphone"></i> Conexão WhatsApp</h3><div id="whatsapp-badge" class="status-badge status-disconnected">OFFLINE</div></div>
                     <div class="wa-body">
-                        <p id="whatsapp-text">O bot está desconectado. Conecte para começar.</p>
-                        <div id="qr-container" class="hidden">
-                            <img id="qr-image" alt="QR Code" />
-                            <p>Escaneie com seu celular</p>
-                        </div>
+                        <p id="whatsapp-text">Desconectado.</p>
+                        <div id="qr-container" class="hidden"><img id="qr-image" alt="QR Code" /><p>Escaneie agora</p></div>
                         <div class="wa-actions">
                             <button id="btn-connect" onclick="connectWhatsApp()" class="btn-primary">Conectar</button>
                             <button id="btn-disconnect" onclick="disconnectWhatsApp()" class="btn-danger hidden">Desconectar</button>
@@ -123,26 +77,19 @@
 
             <div id="view-agents" class="view-section hidden">
                 <div class="section-header">
-                    <p>Gerencie as personalidades da sua IA.</p>
-                    <button onclick="openModal('modal-agent')" class="btn-primary"><i data-lucide="plus"></i> Novo Agente</button>
+                    <p>Gerencie seus assistentes virtuais.</p>
+                    <button onclick="openAgentModal()" class="btn-primary"><i data-lucide="plus"></i> Novo Agente</button>
                 </div>
-                
-                <div id="agents-list" class="grid-agents">
-                    </div>
+                <div id="agents-list" class="grid-agents"></div>
             </div>
 
             <div id="view-chat" class="view-section hidden">
                 <div class="chat-container">
-                    <div class="chat-sidebar">
-                        <h4>Selecione o Agente</h4>
-                        <select id="chat-agent-select" class="input-field"></select>
-                    </div>
+                    <div class="chat-sidebar"><h4>Agente</h4><select id="chat-agent-select" class="input-field"></select></div>
                     <div class="chat-window">
-                        <div id="chat-messages" class="messages-area">
-                            <div class="msg-system">Selecione um agente para iniciar o teste.</div>
-                        </div>
+                        <div id="chat-messages" class="messages-area"><div class="msg-system">Inicie o teste.</div></div>
                         <form id="chat-form" class="chat-input-area">
-                            <input type="text" id="chat-input" placeholder="Digite sua mensagem..." autocomplete="off">
+                            <input type="text" id="chat-input" placeholder="Mensagem..." autocomplete="off">
                             <button type="submit" class="btn-send"><i data-lucide="send"></i></button>
                         </form>
                     </div>
@@ -151,54 +98,43 @@
 
             <div id="view-calendar" class="view-section hidden">
                 <div class="card">
-                    <h3>Compromissos Agendados</h3>
+                    <h3>Agenda</h3>
                     <div class="table-responsive">
                         <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Cliente</th>
-                                    <th>Título</th>
-                                    <th>Data/Hora</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="appointments-list">
-                                </tbody>
+                            <thead><tr><th>Cliente</th><th>Título</th><th>Data</th><th>Status</th></tr></thead>
+                            <tbody id="appointments-list"></tbody>
                         </table>
                     </div>
                 </div>
             </div>
-
         </main>
     </div>
 
     <div id="modal-agent" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Criar Novo Agente</h3>
+                <h3 id="modal-title">Novo Agente</h3>
                 <button onclick="closeModal('modal-agent')" class="btn-close"><i data-lucide="x"></i></button>
             </div>
             <form id="agent-form">
-                <div class="form-group">
-                    <label>Nome (Ex: Vendas)</label>
+                <input type="hidden" id="agent-id"> <div class="form-group">
+                    <label>Nome</label>
                     <input type="text" id="agent-name" class="input-field" required>
                 </div>
                 <div class="form-group">
-                    <label>Slug (Ex: vendas-bot)</label>
+                    <label>Slug (Identificador único)</label>
                     <input type="text" id="agent-slug" class="input-field" required>
                 </div>
                 <div class="form-group">
                     <label>Instruções (Prompt)</label>
-                    <textarea id="agent-instructions" class="input-field" rows="5" required placeholder="Você é um especialista..."></textarea>
+                    <textarea id="agent-instructions" class="input-field" rows="5" required></textarea>
                 </div>
-                <button type="submit" class="btn-primary">Salvar Agente</button>
+                <button type="submit" class="btn-primary">Salvar</button>
             </form>
         </div>
     </div>
 
     <script src="js/main.js"></script>
-    <script>
-        lucide.createIcons(); // Inicia os ícones
-    </script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

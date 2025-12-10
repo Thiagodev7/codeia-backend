@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, Tool } from '@google/generative-ai'
+import { GoogleGenerativeAI, Tool, Content } from '@google/generative-ai'
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
 
@@ -13,7 +13,7 @@ const toolsDef: Tool[] = [
           type: "OBJECT",
           properties: {
             title: { type: "STRING", description: "Título do agendamento." },
-            dateTime: { type: "STRING", description: "Data/hora ISO 8601 (Ex: 2025-12-25T14:30:00)." },
+            dateTime: { type: "STRING", description: "Data/hora ISO 8601 (Ex: 2025-12-12T14:30:00)." },
             description: { type: "STRING", description: "Detalhes opcionais." }
           },
           required: ["title", "dateTime"]
@@ -43,21 +43,50 @@ export class AIService {
       data: { 
         tenantId, 
         ...data,
-        model: "gemini-2.5-flash" // <--- ATUALIZADO PARA O MODELO QUE FUNCIONA
+        model: "gemini-2.5-flash"
       }
     })
   }
 
-  // Chat
-  async chat(agentId: string, userMessage: string, context: { tenantId: string, customerId: string }) {
+  // Atualizar
+  async updateAgent(tenantId: string, agentId: string, data: { name?: string; slug?: string; instructions?: string; isActive?: boolean }) {
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } })
+    if (!agent || agent.tenantId !== tenantId) throw new Error('Agente não encontrado.')
+
+    if (data.slug && data.slug !== agent.slug) {
+      const slugExists = await prisma.agent.findUnique({
+        where: { tenantId_slug: { tenantId, slug: data.slug } }
+      })
+      if (slugExists) throw new Error(`O slug "${data.slug}" já está em uso.`)
+    }
+
+    return prisma.agent.update({ where: { id: agentId }, data })
+  }
+
+  // Deletar
+  async deleteAgent(tenantId: string, agentId: string) {
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } })
+    if (!agent || agent.tenantId !== tenantId) throw new Error('Agente não encontrado.')
+    return prisma.agent.delete({ where: { id: agentId } })
+  }
+
+  // --- CHAT COM MEMÓRIA ---
+  async chat(
+    agentId: string, 
+    userMessage: string, 
+    context: { tenantId: string, customerId: string },
+    history: Content[] = [] // <--- RECEBE O HISTÓRICO AQUI
+  ) {
     const agent = await prisma.agent.findUnique({ where: { id: agentId } })
     if (!agent) throw new Error('Agente não encontrado')
 
-    // Força o modelo 2.5, ignorando configurações antigas do banco
-    const targetModel = "gemini-2.5-flash";
+    if (!agent.isActive) return { response: null }
+
+    let modelName = agent.model;
+    if (!modelName || modelName.includes('1.5')) modelName = 'gemini-2.5-flash';
 
     const model = this.genAI.getGenerativeModel({ 
-      model: targetModel,
+      model: modelName,
       systemInstruction: `
         ${agent.instructions}
         CONTEXTO: Hoje é ${new Date().toLocaleString('pt-BR')}.
@@ -65,7 +94,10 @@ export class AIService {
       tools: toolsDef
     })
 
-    const chatSession = model.startChat()
+    // INICIA O CHAT COM O HISTÓRICO DO BANCO
+    const chatSession = model.startChat({
+        history: history
+    })
 
     try {
       const result = await chatSession.sendMessage(userMessage)
@@ -76,8 +108,6 @@ export class AIService {
         const call = functionCalls[0]
         if (call.name === 'createAppointment') {
           const args = call.args as any
-          logger.info({ args }, '🤖 Agendando...')
-          
           try {
             const appointment = await prisma.appointment.create({
               data: {
@@ -90,7 +120,6 @@ export class AIService {
                 status: 'SCHEDULED'
               }
             })
-
             const funcRes = await chatSession.sendMessage([{
               functionResponse: {
                 name: 'createAppointment',
@@ -106,11 +135,10 @@ export class AIService {
       return { response: response.text() }
 
     } catch (error: any) {
-      logger.error({ model: targetModel, error: error.message }, 'Erro Gemini')
+      logger.error({ model: modelName, error: error.message }, 'Erro Gemini')
       
-      // Se ainda der 404, significa que sua conta Google pode ter restrições específicas
       if (error.message.includes('404')) {
-          return { response: "Erro de configuração da conta Google AI (Modelo não encontrado)." }
+          return { response: "Erro de configuração da conta Google AI." }
       }
       return { response: "Desculpe, tive um problema técnico." }
     }
