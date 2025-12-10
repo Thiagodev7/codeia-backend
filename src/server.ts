@@ -15,6 +15,7 @@ import { aiRoutes } from './routes/ai.routes' // <--- DESCOMENTADO AQUI
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
 import { WhatsAppManager } from './services/whatsapp-manager.service'
+import { serviceRoutes } from './routes/service.routes'
 
 const app = Fastify()
 
@@ -57,6 +58,7 @@ app.register(whatsappRoutes)
 app.register(userRoutes)
 app.register(tenantRoutes)
 app.register(aiRoutes) // <--- DESCOMENTADO AQUI TAMBÉM
+app.register(serviceRoutes)
 
 // --- FUNÇÃO DE RESTAURAÇÃO DE SESSÕES ---
 async function restoreSessions() {

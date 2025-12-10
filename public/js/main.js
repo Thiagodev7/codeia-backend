@@ -9,13 +9,23 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- NAV ---
 function navigate(view) {
     document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-    document.getElementById(`nav-${view}`).classList.add('active');
+    const navItem = document.getElementById(`nav-${view}`);
+    if(navItem) navItem.classList.add('active');
+
     document.querySelectorAll('.view-section').forEach(e => e.classList.add('hidden'));
     document.getElementById(`view-${view}`).classList.remove('hidden');
     
-    const titles = { 'dashboard': 'Visão Geral', 'agents': 'Meus Agentes', 'chat': 'Laboratório', 'calendar': 'Agenda' };
-    document.getElementById('page-title').innerText = titles[view];
+    const titles = { 
+        'dashboard': 'Visão Geral', 
+        'services': 'Catálogo de Serviços',
+        'agents': 'Meus Agentes', 
+        'chat': 'Laboratório de IA', 
+        'calendar': 'Agenda' 
+    };
+    document.getElementById('page-title').innerText = titles[view] || 'CodeIA';
 
+    // Loads Específicos
+    if (view === 'services') loadServices();
     if (view === 'agents') loadAgents();
     if (view === 'calendar') loadAppointments();
     if (view === 'chat') loadAgentsForChat();
@@ -33,7 +43,87 @@ function showAppLayout() {
     startStatusPolling();
 }
 
-// --- AGENTES (CRUD COMPLETO) ---
+// --- SERVIÇOS (NOVO) ---
+async function loadServices() {
+    const token = localStorage.getItem('token');
+    const tbody = document.getElementById('services-list');
+    tbody.innerHTML = '<tr><td colspan="4">Carregando...</td></tr>';
+
+    try {
+        const res = await fetch(`${API_URL}/services`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const services = await res.json();
+        
+        tbody.innerHTML = '';
+        if(services.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#888;">Nenhum serviço cadastrado.</td></tr>';
+            return;
+        }
+
+        services.forEach(s => {
+            tbody.innerHTML += `
+                <tr>
+                    <td style="font-weight:500;">${s.name}</td>
+                    <td>${s.duration} min</td>
+                    <td>R$ ${parseFloat(s.price).toFixed(2)}</td>
+                    <td>
+                        <button class="btn-icon-small text-red" onclick="deleteService('${s.id}')" title="Excluir">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        lucide.createIcons();
+    } catch(err) { tbody.innerHTML = '<tr><td colspan="4">Erro ao carregar serviços.</td></tr>'; }
+}
+
+function openServiceModal() {
+    document.getElementById('service-form').reset();
+    document.getElementById('modal-service').classList.remove('hidden');
+}
+
+document.getElementById('service-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    
+    const payload = {
+        name: document.getElementById('serv-name').value,
+        duration: parseInt(document.getElementById('serv-duration').value),
+        price: parseFloat(document.getElementById('serv-price').value),
+        description: document.getElementById('serv-desc').value
+    };
+
+    try {
+        const res = await fetch(`${API_URL}/services`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+
+        if(res.ok) {
+            showToast('Serviço criado com sucesso!');
+            closeModal('modal-service');
+            loadServices();
+        } else {
+            showToast('Erro ao criar serviço', 'error');
+        }
+    } catch(err) { showToast('Erro de conexão', 'error'); }
+});
+
+window.deleteService = async function(id) {
+    if(!confirm('Excluir este serviço?')) return;
+    const token = localStorage.getItem('token');
+    try {
+        await fetch(`${API_URL}/services/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        loadServices();
+        showToast('Serviço excluído.');
+    } catch(e) { showToast('Erro ao excluir', 'error'); }
+}
+
+// --- AGENTES ---
 async function loadAgents() {
     const token = localStorage.getItem('token');
     const list = document.getElementById('agents-list');
@@ -48,9 +138,6 @@ async function loadAgents() {
 
         agents.forEach(agent => {
             const isActive = agent.isActive ? 'checked' : '';
-            const statusLabel = agent.isActive ? 'Ativo' : 'Pausado';
-            const statusColor = agent.isActive ? 'text-green' : 'text-red';
-
             const card = document.createElement('div');
             card.className = 'card agent-card';
             card.innerHTML = `
@@ -80,13 +167,11 @@ async function loadAgents() {
     } catch(err) { list.innerHTML = 'Erro ao carregar.'; }
 }
 
-// Abrir Modal (Criação ou Edição)
 window.openAgentModal = function(agent = null) {
     const modal = document.getElementById('modal-agent');
     const title = document.getElementById('modal-title');
     const form = document.getElementById('agent-form');
     
-    // Limpa ou Preenche
     if (agent) {
         title.innerText = "Editar Agente";
         document.getElementById('agent-id').value = agent.id;
@@ -98,11 +183,9 @@ window.openAgentModal = function(agent = null) {
         form.reset();
         document.getElementById('agent-id').value = "";
     }
-    
     modal.classList.remove('hidden');
 }
 
-// Salvar (POST ou PUT)
 document.getElementById('agent-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
@@ -125,83 +208,47 @@ document.getElementById('agent-form').addEventListener('submit', async (e) => {
         });
 
         if(res.ok) {
-            showToast('Agente salvo com sucesso!');
+            showToast('Agente salvo!');
             closeModal('modal-agent');
             loadAgents();
         } else {
-            const err = await res.json();
-            showToast(err.message || 'Erro ao salvar', 'error');
+            showToast('Erro ao salvar', 'error');
         }
     } catch(err) { showToast('Erro de conexão', 'error'); }
 });
 
-// Deletar
 window.deleteAgent = async function(id) {
-    if(!confirm("Tem certeza que deseja excluir este agente?")) return;
+    if(!confirm("Excluir agente?")) return;
     const token = localStorage.getItem('token');
-    
-    try {
-        const res = await fetch(`${API_URL}/agents/${id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if(res.ok) {
-            showToast('Agente excluído.');
-            loadAgents();
-        }
-    } catch(e) { showToast('Erro ao excluir', 'error'); }
+    await fetch(`${API_URL}/agents/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    loadAgents();
 }
 
-// Toggle Ativo/Pausa
 window.toggleAgentStatus = async function(id, isActive) {
     const token = localStorage.getItem('token');
-    try {
-        await fetch(`${API_URL}/agents/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ isActive })
-        });
-        showToast(isActive ? 'Agente ativado' : 'Agente pausado');
-    } catch(e) { showToast('Erro ao atualizar status', 'error'); loadAgents(); } // Reverte se der erro
+    await fetch(`${API_URL}/agents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ isActive })
+    });
+    showToast(isActive ? 'Agente ativado' : 'Agente pausado');
 }
 
-// --- MODAIS ---
-window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); }
-
-// --- LOGIN & AUTH ---
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    try {
-        const res = await fetch(`${API_URL}/login`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if(res.ok) {
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            showAppLayout();
-        } else { showToast(data.error, 'error'); }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
-});
-
-function logout() { localStorage.removeItem('token'); window.location.reload(); }
-
-// --- DASHBOARD & UTILS ---
-async function loadDashboardStats() {
+// --- AGENDA ---
+async function loadAppointments() {
     const token = localStorage.getItem('token');
+    const tbody = document.getElementById('appointments-list');
+    tbody.innerHTML = '<tr><td colspan="4">Carregando...</td></tr>';
     try {
-        const res = await fetch(`${API_URL}/tenant/me`, { headers: { 'Authorization': `Bearer ${token}` } });
-        if(res.ok) {
-            const data = await res.json();
-            document.getElementById('count-users').innerText = data._count.users || 0;
-            document.getElementById('count-messages').innerText = data._count.messages || 0;
-            document.getElementById('count-appointments').innerText = data._count.appointments || 0;
-        }
-    } catch(e){}
+        const res = await fetch(`${API_URL}/appointments`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const apps = await res.json();
+        tbody.innerHTML = '';
+        if(apps.length===0) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center">Nenhum agendamento.</td></tr>'; return; }
+        apps.forEach(app => {
+            const date = new Date(app.startTime).toLocaleString('pt-BR');
+            tbody.innerHTML += `<tr><td>${app.customer?.name||'Cliente'}</td><td>${app.title}</td><td>${date}</td><td><span class="status-badge status-connected">${app.status}</span></td></tr>`;
+        });
+    } catch(e) { tbody.innerHTML = '<tr><td colspan="4">Erro.</td></tr>'; }
 }
 
 // --- CHAT ---
@@ -237,8 +284,10 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
             body: JSON.stringify({ agentId, message: msg })
         });
         const data = await res.json();
-        const text = data.response || "(Sem resposta - Agente Pausado)";
-        appendMessage('ai', text);
+        appendMessage('ai', data.response);
+        if(data.action === 'appointment_created') {
+            showToast('Agendamento realizado!');
+        }
     } catch(e) { appendMessage('ai', 'Erro no chat.'); }
 });
 
@@ -251,24 +300,41 @@ function appendMessage(role, text) {
     area.scrollTop = area.scrollHeight;
 }
 
-// --- AGENDA ---
-async function loadAppointments() {
-    const token = localStorage.getItem('token');
-    const tbody = document.getElementById('appointments-list');
-    tbody.innerHTML = '<tr><td colspan="4">Carregando...</td></tr>';
+// --- UTILS ---
+window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); }
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
     try {
-        const res = await fetch(`${API_URL}/appointments`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const apps = await res.json();
-        tbody.innerHTML = '';
-        if(apps.length===0) { tbody.innerHTML='<tr><td colspan="4">Vazio.</td></tr>'; return; }
-        apps.forEach(app => {
-            const date = new Date(app.startTime).toLocaleString('pt-BR');
-            tbody.innerHTML += `<tr><td>${app.customer?.name||'Anon'}</td><td>${app.title}</td><td>${date}</td><td>${app.status}</td></tr>`;
+        const res = await fetch(`${API_URL}/login`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email, password })
         });
-    } catch(e) { tbody.innerHTML = '<tr><td colspan="4">Erro.</td></tr>'; }
+        const data = await res.json();
+        if(res.ok) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            showAppLayout();
+        } else { showToast(data.error, 'error'); }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+});
+
+function logout() { localStorage.removeItem('token'); window.location.reload(); }
+
+async function loadDashboardStats() {
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`${API_URL}/tenant/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if(res.ok) {
+            const data = await res.json();
+            document.getElementById('count-users').innerText = data._count.users || 0;
+            document.getElementById('count-messages').innerText = data._count.messages || 0;
+            document.getElementById('count-appointments').innerText = data._count.appointments || 0;
+        }
+    } catch(e){}
 }
 
-// --- WHATSAPP STATUS ---
 let pollInterval;
 function startStatusPolling() {
     if(pollInterval) clearInterval(pollInterval);
@@ -313,7 +379,6 @@ async function disconnectWhatsApp() {
     await fetch(`${API_URL}/whatsapp/disconnect`, { method: 'POST', headers: {'Authorization': `Bearer ${token}`} });
 }
 
-// --- UTILS ---
 function initTheme() { if(localStorage.getItem('theme')==='dark') document.documentElement.classList.add('dark-mode'); }
 function toggleTheme() { document.documentElement.classList.toggle('dark-mode'); localStorage.setItem('theme', document.documentElement.classList.contains('dark-mode') ? 'dark':'light'); }
 function showToast(msg, type='success') {

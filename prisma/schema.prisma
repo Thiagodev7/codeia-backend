@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -25,9 +23,9 @@ model Tenant {
   customers     Customer[]
   waSession     WhatsAppSession?
   
-  // RELAÇÕES ADICIONADAS PARA O DASHBOARD FUNCIONAR
   messages      Message[]
   appointments  Appointment[]
+  services      Service[] // <--- ESTA LINHA ESTAVA FALTANDO!
 
   @@map("tenants")
 }
@@ -107,15 +105,35 @@ model Message {
   createdAt     DateTime @default(now())
 
   customer      Customer @relation(fields: [customerId], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id]) // <--- Correção aqui
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
   
   @@map("messages")
+}
+
+// --- MODULO DE AGENDA ---
+
+model Service {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String   // Ex: "Corte de Cabelo"
+  description   String?  // Ex: "Incluso lavagem"
+  price         Decimal  @default(0.0) // Ex: 50.00
+  duration      Int      // Duração em minutos (Ex: 30)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  appointments  Appointment[]
+
+  @@map("services")
 }
 
 model Appointment {
   id            String   @id @default(uuid())
   tenantId      String
   customerId    String
+  serviceId     String?  // Opcional
+  
   title         String
   description   String?
   startTime     DateTime
@@ -123,7 +141,8 @@ model Appointment {
   status        String   @default("SCHEDULED")
   
   customer      Customer @relation(fields: [customerId], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id]) // <--- Correção aqui
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  service       Service? @relation(fields: [serviceId], references: [id])
 
   @@map("appointments")
 }

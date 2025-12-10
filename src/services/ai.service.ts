@@ -1,22 +1,32 @@
-import { GoogleGenerativeAI, Tool, Content } from '@google/generative-ai'
+import { GoogleGenerativeAI, Tool } from '@google/generative-ai'
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
 
-// Ferramentas
 const toolsDef: Tool[] = [
   {
     functionDeclarations: [
       {
         name: "createAppointment",
-        description: "Agendar um compromisso no calendário.",
+        description: "Agendar um serviço. Tente sempre usar o nome exato do serviço disponível.",
         parameters: {
           type: "OBJECT",
           properties: {
-            title: { type: "STRING", description: "Título do agendamento." },
-            dateTime: { type: "STRING", description: "Data/hora ISO 8601 (Ex: 2025-12-12T14:30:00)." },
-            description: { type: "STRING", description: "Detalhes opcionais." }
+            serviceName: { type: "STRING", description: "Nome do serviço desejado (ex: Corte de Cabelo)." },
+            dateTime: { type: "STRING", description: "Data e hora ISO 8601 (Ex: 2025-12-25T14:30:00)." },
+            clientName: { type: "STRING", description: "Nome do cliente (se disponível)." }
           },
-          required: ["title", "dateTime"]
+          required: ["serviceName", "dateTime"]
+        }
+      },
+      {
+        name: "checkAvailability",
+        description: "Verificar se um horário está livre antes de agendar.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            dateTime: { type: "STRING", description: "Data e hora desejada." }
+          },
+          required: ["dateTime"]
         }
       }
     ]
@@ -32,72 +42,51 @@ export class AIService {
     this.genAI = new GoogleGenerativeAI(apiKey)
   }
 
-  // Criar Agente
-  async createAgent(tenantId: string, data: { name: string; slug: string; instructions: string }) {
-    const existing = await prisma.agent.findUnique({
-      where: { tenantId_slug: { tenantId, slug: data.slug } }
-    })
-    if (existing) throw new Error(`O slug "${data.slug}" já existe.`)
-
-    return prisma.agent.create({
-      data: { 
-        tenantId, 
-        ...data,
-        model: "gemini-2.5-flash"
-      }
-    })
+  // ... (createAgent mantém igual)
+  async createAgent(tenantId: string, data: any) {
+    const existing = await prisma.agent.findUnique({ where: { tenantId_slug: { tenantId, slug: data.slug } } })
+    if (existing) throw new Error(`Slug em uso.`)
+    return prisma.agent.create({ data: { tenantId, ...data, model: "gemini-2.5-flash-lite" } })
   }
 
-  // Atualizar
-  async updateAgent(tenantId: string, agentId: string, data: { name?: string; slug?: string; instructions?: string; isActive?: boolean }) {
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } })
-    if (!agent || agent.tenantId !== tenantId) throw new Error('Agente não encontrado.')
-
-    if (data.slug && data.slug !== agent.slug) {
-      const slugExists = await prisma.agent.findUnique({
-        where: { tenantId_slug: { tenantId, slug: data.slug } }
-      })
-      if (slugExists) throw new Error(`O slug "${data.slug}" já está em uso.`)
-    }
-
-    return prisma.agent.update({ where: { id: agentId }, data })
-  }
-
-  // Deletar
-  async deleteAgent(tenantId: string, agentId: string) {
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } })
-    if (!agent || agent.tenantId !== tenantId) throw new Error('Agente não encontrado.')
-    return prisma.agent.delete({ where: { id: agentId } })
-  }
-
-  // --- CHAT COM MEMÓRIA ---
-  async chat(
-    agentId: string, 
-    userMessage: string, 
-    context: { tenantId: string, customerId: string },
-    history: Content[] = [] // <--- RECEBE O HISTÓRICO AQUI
-  ) {
+  // --- CHAT INTELIGENTE ---
+  async chat(agentId: string, userMessage: string, context: { tenantId: string, customerId: string }, history: any[] = []) {
     const agent = await prisma.agent.findUnique({ where: { id: agentId } })
     if (!agent) throw new Error('Agente não encontrado')
-
     if (!agent.isActive) return { response: null }
 
-    let modelName = agent.model;
-    if (!modelName || modelName.includes('1.5')) modelName = 'gemini-2.5-flash';
+    // 1. BUSCAR SERVIÇOS DO BANCO
+    const services = await prisma.service.findMany({
+      where: { tenantId: context.tenantId, isActive: true },
+      select: { name: true, duration: true, price: true }
+    })
+
+    // Monta o "Menu" para a IA
+    const servicesList = services.map(s => `- ${s.name} (${s.duration} min) - R$ ${s.price}`).join('\n')
+
+    const systemPrompt = `
+      ${agent.instructions}
+      
+      === CONTEXTO DO SISTEMA ===
+      - Hoje é: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.
+      
+      === SERVIÇOS DISPONÍVEIS (MENU) ===
+      ${services.length > 0 ? servicesList : "Nenhum serviço cadastrado ainda. Apenas agende horários genéricos de 1h."}
+      
+      === REGRAS DE AGENDAMENTO ===
+      1. Se o cliente pedir um serviço, verifique se existe no MENU acima.
+      2. Use a duração correta do serviço para calcular o fim do agendamento.
+      3. Antes de confirmar, VERIFIQUE se o horário está livre (mas pode tentar agendar direto que eu valido).
+      4. Se der erro de "Horário Ocupado", avise o cliente e sugira outro.
+    `
 
     const model = this.genAI.getGenerativeModel({ 
-      model: modelName,
-      systemInstruction: `
-        ${agent.instructions}
-        CONTEXTO: Hoje é ${new Date().toLocaleString('pt-BR')}.
-      `,
+      model: "gemini-2.5-flash-lite",
+      systemInstruction: systemPrompt,
       tools: toolsDef
     })
 
-    // INICIA O CHAT COM O HISTÓRICO DO BANCO
-    const chatSession = model.startChat({
-        history: history
-    })
+    const chatSession = model.startChat({ history })
 
     try {
       const result = await chatSession.sendMessage(userMessage)
@@ -106,40 +95,79 @@ export class AIService {
       
       if (functionCalls && functionCalls.length > 0) {
         const call = functionCalls[0]
+        
+        // --- FERRAMENTA: AGENDAR ---
         if (call.name === 'createAppointment') {
           const args = call.args as any
+          
+          // A. Descobrir a duração baseada no nome do serviço
+          // A IA tenta mandar o nome, nós buscamos o match mais próximo ou exato
+          const serviceMatch = services.find(s => s.name.toLowerCase().includes(args.serviceName.toLowerCase()))
+          
+          const duration = serviceMatch ? serviceMatch.duration : 60 // Padrão 1h se não achar
+          const serviceId = serviceMatch ? (await prisma.service.findFirst({where: {tenantId: context.tenantId, name: serviceMatch.name}}))?.id : null
+
+          const startTime = new Date(args.dateTime)
+          const endTime = new Date(startTime.getTime() + duration * 60000)
+
+          // B. VERIFICAÇÃO DE CONFLITO (CRÍTICO)
+          const conflict = await prisma.appointment.findFirst({
+            where: {
+              tenantId: context.tenantId,
+              status: 'SCHEDULED',
+              OR: [
+                { startTime: { lt: endTime }, endTime: { gt: startTime } } // Lógica de sobreposição de tempo
+              ]
+            }
+          })
+
+          if (conflict) {
+            // Retorna erro para a IA tratar e avisar o usuário
+            const funcRes = await chatSession.sendMessage([{
+              functionResponse: {
+                name: 'createAppointment',
+                response: { status: 'error', message: 'ERRO: Horário já está ocupado por outro cliente.' }
+              }
+            }])
+            return { response: funcRes.response.text(), action: 'conflict_detected' }
+          }
+
+          // C. Se livre, Agenda!
           try {
             const appointment = await prisma.appointment.create({
               data: {
                 tenantId: context.tenantId,
                 customerId: context.customerId,
-                title: args.title,
-                startTime: new Date(args.dateTime),
-                endTime: new Date(new Date(args.dateTime).getTime() + 3600000),
-                description: args.description || 'Via Bot',
+                serviceId: serviceId,
+                title: args.serviceName || 'Atendimento',
+                startTime: startTime,
+                endTime: endTime,
+                description: `Agendado via Bot. Duração: ${duration}min`,
                 status: 'SCHEDULED'
               }
             })
+
             const funcRes = await chatSession.sendMessage([{
               functionResponse: {
                 name: 'createAppointment',
-                response: { status: 'success', id: appointment.id, message: `Agendado para ${args.dateTime}` }
+                response: { 
+                  status: 'success', 
+                  id: appointment.id, 
+                  message: `Agendado com sucesso! ${args.serviceName} às ${startTime.toLocaleTimeString()} (${duration} min).` 
+                }
               }
             }])
             return { response: funcRes.response.text(), action: 'appointment_created' }
+
           } catch (dbError) {
-            return { response: "Erro ao acessar agenda." }
+            return { response: "Erro técnico ao gravar na agenda." }
           }
         }
       }
       return { response: response.text() }
 
     } catch (error: any) {
-      logger.error({ model: modelName, error: error.message }, 'Erro Gemini')
-      
-      if (error.message.includes('404')) {
-          return { response: "Erro de configuração da conta Google AI." }
-      }
+      logger.error({ error: error.message }, 'Erro Gemini')
       return { response: "Desculpe, tive um problema técnico." }
     }
   }
