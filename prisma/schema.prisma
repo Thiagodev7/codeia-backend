@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- CORE DO SAAS ---
+
+model Tenant {
+  id            String   @id @default(uuid())
+  name          String
+  document      String   @unique
+  plan          String   @default("FREE")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  users         User[]
+  agents        Agent[]
+  customers     Customer[]
+  waSession     WhatsAppSession? // Relacionamento 1 para 1
+
+  @@map("tenants")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  email         String   @unique
+  phone         String?
+  passwordHash  String
+  role          String   @default("ADMIN")
+  
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("users")
+}
+
+// --- MODULO DE IA ---
+
+model Agent {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String   // Ex: "Vendas"
+  slug          String   // Ex: "vendas-bot"
+  model         String   @default("gemini-1.5-flash")
+  instructions  String   @db.Text
+  isActive      Boolean  @default(true)
+  
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, slug])
+  @@map("agents")
+}
+
+// --- MODULO WHATSAPP & CRM ---
+
+model WhatsAppSession {
+  id            String   @id @default(uuid())
+  tenantId      String   @unique
+  sessionName   String   @default("Default")
+  status        String   @default("DISCONNECTED") // CONNECTED, QRCODE, DISCONNECTED
+  config        Json?    // Auth Strategy
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  
+  @@map("whatsapp_sessions")
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  tenantId      String
+  phone         String
+  name          String?
+  createdAt     DateTime @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  messages      Message[]
+  appointments  Appointment[]
+
+  @@unique([tenantId, phone])
+  @@map("customers")
+}
+
+model Message {
+  id            String   @id @default(uuid())
+  tenantId      String
+  customerId    String
+  role          String   // 'user' ou 'model'
+  content       String   @db.Text
+  createdAt     DateTime @default(now())
+
+  customer      Customer @relation(fields: [customerId], references: [id])
+  
+  @@map("messages")
+}
+
+model Appointment {
+  id            String   @id @default(uuid())
+  tenantId      String
+  customerId    String
+  title         String
+  description   String?
+  startTime     DateTime
+  endTime       DateTime
+  status        String   @default("SCHEDULED")
+  
+  customer      Customer @relation(fields: [customerId], references: [id])
+
+  @@map("appointments")
+}

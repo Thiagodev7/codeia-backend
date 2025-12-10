@@ -1,0 +1,42 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/src/generated/prisma
+# --- Dependências ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Build (Produção) ---
+dist/
+build/
+*.tsbuildinfo
+
+# --- Ambiente e Segredos (CRÍTICO) ---
+# Nunca commite arquivos .env!
+.env
+.env.test
+.env.production
+.env.local
+
+# --- Sistema Operacional ---
+.DS_Store
+Thumbs.db
+
+# --- WhatsApp Web.js Sessions ---
+# Ignorar sessões locais para não vazar dados de zap ou travar o CI/CD
+.wwebjs_auth/
+.wwebjs_cache/
+wwebjs_auth/
+wwebjs_cache/
+
+# --- Logs ---
+logs/
+*.log
+
+# --- IDEs ---
+.vscode/
+.idea/
