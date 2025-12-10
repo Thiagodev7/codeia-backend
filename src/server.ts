@@ -6,6 +6,8 @@ import fastifySwaggerUi from '@fastify/swagger-ui'
 import { serializerCompiler, validatorCompiler, jsonSchemaTransform } from 'fastify-type-provider-zod'
 
 import { authRoutes } from './routes/auth.routes'
+import { userRoutes } from './routes/user.routes'     // <--- NOVO
+import { tenantRoutes } from './routes/tenant.routes' // <--- NOVO
 import { whatsappRoutes } from './routes/whatsapp.routes'
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
@@ -36,6 +38,8 @@ app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret' })
 // Rotas
 app.register(authRoutes)
 app.register(whatsappRoutes)
+app.register(userRoutes)    // <--- REGISTRAR
+app.register(tenantRoutes)  // <--- REGISTRAR
 
 // Função para restaurar sessões do WhatsApp ao reiniciar
 async function restoreSessions() {
