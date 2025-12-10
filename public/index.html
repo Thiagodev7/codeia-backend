@@ -14,108 +14,73 @@
         <div class="login-card">
             <div class="brand-header">
                 <div class="logo-big">Code<span>IA</span></div>
-                <p style="color: var(--text-muted); margin-top: 10px;">Sistema de Gestão Inteligente</p>
+                <p style="color: var(--text-muted); margin-top: 10px;">Gestão Inteligente</p>
             </div>
             <form id="login-form">
-                <div class="form-group">
-                    <input type="email" id="email" class="input-field" placeholder="Seu e-mail corporativo" required>
-                </div>
-                <div class="form-group">
-                    <input type="password" id="password" class="input-field" placeholder="Sua senha de acesso" required>
-                </div>
-                <button type="submit" class="btn-primary" id="btn-login">Inicializar Sistema</button>
+                <div class="form-group"><input type="email" id="email" class="input-field" placeholder="E-mail" required></div>
+                <div class="form-group"><input type="password" id="password" class="input-field" placeholder="Senha" required></div>
+                <button type="submit" class="btn-primary" id="btn-login">Entrar no Sistema</button>
             </form>
         </div>
     </div>
 
     <div id="app-layout" class="app-layout hidden">
-        
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">Code<span>IA</span> <small style="font-size:0.4em; border:1px solid var(--glass-border); padding:2px 5px; border-radius:4px;">PRO</small></div>
             </div>
-            
             <nav class="sidebar-nav">
-                <button onclick="navigate('dashboard')" class="nav-item active" id="nav-dashboard">
-                    <i data-lucide="layout-grid"></i> <span>Dashboard</span>
-                </button>
-                <button onclick="navigate('services')" class="nav-item" id="nav-services">
-                    <i data-lucide="box"></i> <span>Serviços</span>
-                </button>
-                <button onclick="navigate('calendar')" class="nav-item" id="nav-calendar">
-                    <i data-lucide="calendar-clock"></i> <span>Agenda</span>
-                </button>
-                <button onclick="navigate('agents')" class="nav-item" id="nav-agents">
-                    <i data-lucide="cpu"></i> <span>Agentes IA</span>
-                </button>
-                <button onclick="navigate('chat')" class="nav-item" id="nav-chat">
-                    <i data-lucide="message-square-code"></i> <span>Simulador</span>
-                </button>
+                <button onclick="navigate('dashboard')" class="nav-item active" id="nav-dashboard"><i data-lucide="layout-grid"></i> <span>Dashboard</span></button>
+                <button onclick="navigate('services')" class="nav-item" id="nav-services"><i data-lucide="box"></i> <span>Serviços</span></button>
+                <button onclick="navigate('calendar')" class="nav-item" id="nav-calendar"><i data-lucide="calendar-clock"></i> <span>Agenda</span></button>
+                <button onclick="navigate('agents')" class="nav-item" id="nav-agents"><i data-lucide="cpu"></i> <span>Agentes IA</span></button>
+                <button onclick="navigate('chat')" class="nav-item" id="nav-chat"><i data-lucide="message-square-code"></i> <span>Simulador</span></button>
             </nav>
-
             <div class="sidebar-footer">
                 <div class="user-mini-profile">
-                    <div class="avatar">T</div>
-                    <div class="info">
-                        <span id="sidebar-user-name">User</span>
-                        <small>Online</small>
-                    </div>
+                    <div class="avatar">U</div>
+                    <div class="info"><span id="sidebar-user-name">User</span><small>Online</small></div>
                 </div>
-                <button onclick="logout()" class="btn-icon-small" title="Sair">
-                    <i data-lucide="power"></i>
-                </button>
+                <button onclick="logout()" class="btn-icon-small" title="Sair"><i data-lucide="power"></i></button>
             </div>
         </aside>
 
         <main class="main-content">
             <header class="topbar">
                 <h2 id="page-title">Dashboard</h2>
-                <div style="display:none"></div> 
+                <button class="btn-icon" onclick="toggleTheme()" title="Mudar Tema">
+                    <i data-lucide="sun" id="icon-sun" class="hidden"></i>
+                    <i data-lucide="moon" id="icon-moon"></i>
+                </button>
             </header>
 
             <div id="view-dashboard" class="view-section">
                 <div class="grid-stats">
-                    <div class="card stat-card">
-                        <div class="icon-box blue"><i data-lucide="users"></i></div>
-                        <div><h3>Base de Usuários</h3><span class="stat-value" id="count-users">--</span></div>
-                    </div>
-                    <div class="card stat-card">
-                        <div class="icon-box green"><i data-lucide="message-circle"></i></div>
-                        <div><h3>Interações</h3><span class="stat-value" id="count-messages">--</span></div>
-                    </div>
-                    <div class="card stat-card">
-                        <div class="icon-box purple"><i data-lucide="check-circle-2"></i></div>
-                        <div><h3>Agendamentos</h3><span class="stat-value" id="count-appointments">--</span></div>
-                    </div>
+                    <div class="card stat-card"><div class="icon-box blue"><i data-lucide="users"></i></div><div><h3>Usuários</h3><span class="stat-value" id="count-users">--</span></div></div>
+                    <div class="card stat-card"><div class="icon-box green"><i data-lucide="message-circle"></i></div><div><h3>Mensagens</h3><span class="stat-value" id="count-messages">--</span></div></div>
+                    <div class="card stat-card"><div class="icon-box purple"><i data-lucide="check-circle-2"></i></div><div><h3>Agendamentos</h3><span class="stat-value" id="count-appointments">--</span></div></div>
                 </div>
-
-                <div class="card" style="display: flex; align-items: center; justify-content: space-between; gap: 2rem;">
+                <div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:2rem;">
                     <div>
-                        <h3 style="color: var(--primary); margin-bottom: 5px;">Status do Módulo WhatsApp</h3>
-                        <p id="whatsapp-text" style="color: var(--text-muted);">O sistema está desconectado da rede.</p>
-                        <div id="whatsapp-badge" class="status-badge status-disconnected" style="margin-top:10px; display:inline-block;">OFFLINE</div>
+                        <h3 style="color:var(--primary); margin-bottom:5px;">WhatsApp Status</h3>
+                        <p id="whatsapp-text" style="color:var(--text-muted);">Desconectado.</p>
+                        <div id="whatsapp-badge" class="status-badge status-disconnected" style="margin-top:10px; display:inline-block; padding: 5px 10px; border-radius: 20px; font-weight: bold; background: rgba(239, 68, 68, 0.2); color: var(--danger);">OFFLINE</div>
                     </div>
-                    
-                    <div id="qr-container" class="hidden" style="text-align: center;">
-                        <img id="qr-image" alt="QR Code" style="width: 150px; border-radius: 10px; border: 2px solid var(--primary);">
-                        <p class="code-font" style="margin-top: 5px; font-size: 0.8rem;">SCAN ME</p>
+                    <div id="qr-container" class="hidden" style="text-align:center;">
+                        <img id="qr-image" alt="QR Code" style="width:150px; border-radius:10px; border:2px solid var(--primary);">
+                        <p class="code-font" style="margin-top:5px; font-size:0.8rem;">SCAN ME</p>
                     </div>
-
                     <div class="wa-actions">
-                        <button id="btn-connect" onclick="connectWhatsApp()" class="btn-primary" style="width: auto; padding: 0.8rem 2rem;">
-                            <i data-lucide="wifi"></i> Iniciar Conexão
-                        </button>
-                        <button id="btn-disconnect" onclick="disconnectWhatsApp()" class="btn-primary hidden" style="width: auto; background: var(--danger); box-shadow: none;">
-                            <i data-lucide="wifi-off"></i> Desconectar
-                        </button>
+                        <button id="btn-connect" onclick="connectWhatsApp()" class="btn-primary" style="width:auto; padding:0.8rem 2rem;"><i data-lucide="wifi"></i> Conectar</button>
+                        <button id="btn-disconnect" onclick="disconnectWhatsApp()" class="btn-primary hidden" style="width:auto; background:var(--danger); box-shadow:none;"><i data-lucide="wifi-off"></i> Desconectar</button>
                     </div>
                 </div>
             </div>
 
             <div id="view-services" class="view-section hidden">
                 <div style="display:flex; justify-content:space-between; margin-bottom:1.5rem;">
-                    <p style="color:var(--text-muted)">Configure o catálogo de serviços para a IA.</p>
-                    <button onclick="openServiceModal()" class="btn-primary" style="width:auto;"><i data-lucide="plus"></i> Adicionar</button>
+                    <p style="color:var(--text-muted)">Catálogo de Serviços</p>
+                    <button onclick="openServiceModal()" class="btn-primary" style="width:auto;"><i data-lucide="plus"></i> Novo</button>
                 </div>
                 <div class="card" style="padding:0; border:none; background:transparent;">
                     <div class="table-responsive">
@@ -129,8 +94,8 @@
 
             <div id="view-agents" class="view-section hidden">
                 <div style="display:flex; justify-content:space-between; margin-bottom:1.5rem;">
-                    <p style="color:var(--text-muted)">Rede Neural de Assistentes.</p>
-                    <button onclick="openAgentModal()" class="btn-primary" style="width:auto;"><i data-lucide="plus"></i> Novo Bot</button>
+                    <p style="color:var(--text-muted)">Meus Agentes</p>
+                    <button onclick="openAgentModal()" class="btn-primary" style="width:auto;"><i data-lucide="plus"></i> Novo</button>
                 </div>
                 <div id="agents-list" class="grid-agents"></div>
             </div>
@@ -139,7 +104,7 @@
                 <div class="card" style="padding:0; border:none; background:transparent;">
                     <div class="table-responsive">
                         <table class="data-table">
-                            <thead><tr><th>Cliente</th><th>Serviço</th><th>Data & Hora</th><th>Status</th></tr></thead>
+                            <thead><tr><th>Cliente</th><th>Serviço</th><th>Data</th><th>Status</th></tr></thead>
                             <tbody id="appointments-list"></tbody>
                         </table>
                     </div>
@@ -149,37 +114,33 @@
             <div id="view-chat" class="view-section hidden">
                 <div class="chat-container">
                     <div class="chat-sidebar">
-                        <h4 style="margin-bottom:1rem; color:var(--primary);">Configuração</h4>
-                        <label style="font-size:0.8rem; color:var(--text-muted);">Agente Ativo</label>
-                        <select id="chat-agent-select" class="input-field" style="margin-top:5px;"></select>
+                        <h4 style="margin-bottom:1rem; color:var(--primary);">Config</h4>
+                        <select id="chat-agent-select" class="input-field"></select>
                     </div>
                     <div class="chat-window">
-                        <div id="chat-messages" class="messages-area">
-                            <div class="msg ai">Olá! O sistema Neural está pronto. Selecione um agente e inicie o teste.</div>
-                        </div>
+                        <div id="chat-messages" class="messages-area"><div class="msg ai">Olá! Selecione um agente.</div></div>
                         <form id="chat-form" class="chat-input-area">
-                            <input type="text" id="chat-input" class="input-field" placeholder="Digite sua mensagem aqui..." autocomplete="off">
-                            <button type="submit" class="btn-send" style="background:var(--primary); border:none; border-radius:12px; width:50px; height:50px; cursor:pointer;"><i data-lucide="send" style="color:#000;"></i></button>
+                            <input type="text" id="chat-input" class="input-field" placeholder="Mensagem..." autocomplete="off">
+                            <button type="submit" class="btn-send" style="background:var(--primary); border:none; border-radius:12px; width:50px; height:50px; cursor:pointer;"><i data-lucide="send" style="color:#fff;"></i></button>
                         </form>
                     </div>
                 </div>
             </div>
-
         </main>
     </div>
 
     <div id="modal-agent" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:1.5rem;">
-                <h3 id="modal-title">Configurar Agente</h3>
+                <h3 id="modal-title">Agente</h3>
                 <button onclick="closeModal('modal-agent')" class="btn-icon-small"><i data-lucide="x"></i></button>
             </div>
             <form id="agent-form">
                 <input type="hidden" id="agent-id">
                 <div class="form-group"><label>Nome</label><input type="text" id="agent-name" class="input-field" required></div>
-                <div class="form-group"><label>Slug (ID Único)</label><input type="text" id="agent-slug" class="input-field" required></div>
-                <div class="form-group"><label>Prompt do Sistema (Instruções)</label><textarea id="agent-instructions" class="input-field" rows="5" required></textarea></div>
-                <button type="submit" class="btn-primary" style="margin-top:1rem;">Salvar Configuração</button>
+                <div class="form-group"><label>Slug</label><input type="text" id="agent-slug" class="input-field" required></div>
+                <div class="form-group"><label>Prompt</label><textarea id="agent-instructions" class="input-field" rows="5" required></textarea></div>
+                <button type="submit" class="btn-primary" style="margin-top:1rem;">Salvar</button>
             </form>
         </div>
     </div>
@@ -187,17 +148,18 @@
     <div id="modal-service" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:1.5rem;">
-                <h3>Novo Serviço</h3>
+                <h3 id="modal-service-title">Serviço</h3>
                 <button onclick="closeModal('modal-service')" class="btn-icon-small"><i data-lucide="x"></i></button>
             </div>
             <form id="service-form">
+                <input type="hidden" id="serv-id">
                 <div class="form-group"><label>Nome</label><input type="text" id="serv-name" class="input-field" required></div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
                     <div class="form-group"><label>Duração (min)</label><input type="number" id="serv-duration" class="input-field" value="30" required></div>
-                    <div class="form-group"><label>Valor (R$)</label><input type="number" id="serv-price" class="input-field" value="0" required></div>
+                    <div class="form-group"><label>Valor (R$)</label><input type="number" id="serv-price" class="input-field" value="0" step="0.01" required></div>
                 </div>
                 <div class="form-group"><label>Descrição</label><input type="text" id="serv-desc" class="input-field"></div>
-                <button type="submit" class="btn-primary" style="margin-top:1rem;">Registrar Serviço</button>
+                <button type="submit" class="btn-primary" style="margin-top:1rem;">Salvar</button>
             </form>
         </div>
     </div>
