@@ -1,4 +1,7 @@
-const API_URL = 'http://localhost:3333';
+// Se estiver rodando local, usa localhost. Se estiver na VPS, usa a URL oficial.
+const API_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:3333' 
+    : 'https://codemais.com';
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme(); // Carrega tema salvo
