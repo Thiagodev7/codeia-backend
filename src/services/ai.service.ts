@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, Tool, Content } from '@google/generative-ai'
+import { GoogleGenerativeAI, Tool, Content, SchemaType } from '@google/generative-ai'
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
 
@@ -9,11 +9,11 @@ const toolsDef: Tool[] = [
         name: "createAppointment",
         description: "Agendar um compromisso no calendário. Verifique serviços e horários antes.",
         parameters: {
-          type: "OBJECT",
+          type: SchemaType.OBJECT,
           properties: {
-            serviceName: { type: "STRING", description: "Nome do serviço desejado." },
-            dateTime: { type: "STRING", description: "Data e hora ISO 8601 (Ex: 2025-12-12T14:30:00)." },
-            clientName: { type: "STRING", description: "Nome do cliente." }
+            serviceName: { type: SchemaType.STRING, description: "Nome do serviço desejado." },
+            dateTime: { type: SchemaType.STRING, description: "Data e hora ISO 8601 (Ex: 2025-12-12T14:30:00)." },
+            clientName: { type: SchemaType.STRING, description: "Nome do cliente." }
           },
           required: ["serviceName", "dateTime"]
         }
@@ -25,7 +25,7 @@ const toolsDef: Tool[] = [
 export class AIService {
   private genAI: GoogleGenerativeAI
   
-  // Modelo de Produção (Billing Ativo)
+  // Modelo de Produção
   private readonly MODEL_NAME = "gemini-2.5-flash"; 
 
   constructor() {
@@ -83,7 +83,7 @@ export class AIService {
     return prisma.agent.delete({ where: { id: agentId } })
   }
 
-  // --- CHAT GENÉRICO (PERSONALIDADE VEM DO BANCO) ---
+  // --- CHAT ---
   async chat(
     agentId: string, 
     userMessage: string, 
@@ -95,7 +95,6 @@ export class AIService {
     
     if (agent.isActive === false) return { response: null }
 
-    // Busca serviços para injetar no contexto
     const services = await prisma.service.findMany({
       where: { tenantId: context.tenantId, isActive: true },
       select: { name: true, duration: true, price: true }
@@ -104,21 +103,15 @@ export class AIService {
         ? services.map(s => `- ${s.name} (${s.duration} min) R$${Number(s.price).toFixed(2)}`).join('\n')
         : "Nenhum serviço cadastrado.";
 
-    // --- PROMPT DINÂMICO ---
-    // Aqui misturamos a configuração do usuário com dados técnicos obrigatórios
     const systemPrompt = `
       ${agent.instructions}
 
-      === CONTEXTO TÉCNICO OBRIGATÓRIO (NÃO IGNORE) ===
+      === CONTEXTO TÉCNICO ===
       - Hoje é: ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
       - Hora atual: ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
       
-      === LISTA DE SERVIÇOS/PRODUTOS DISPONÍVEIS ===
+      === LISTA DE SERVIÇOS ===
       ${servicesList}
-
-      === INSTRUÇÕES DE FERRAMENTAS ===
-      - Se o cliente quiser agendar, VERIFIQUE na lista acima se o serviço existe.
-      - Use a ferramenta 'createAppointment' para confirmar.
     `
 
     const model = this.genAI.getGenerativeModel({ 
@@ -138,7 +131,6 @@ export class AIService {
         const call = functionCalls[0]
         if (call.name === 'createAppointment') {
           const args = call.args as any
-          
           try {
             const serviceMatch = services.find(s => s.name.toLowerCase().includes(args.serviceName.toLowerCase()))
             const duration = serviceMatch ? serviceMatch.duration : 60
@@ -163,22 +155,15 @@ export class AIService {
             const funcRes = await chatSession.sendMessage([{
               functionResponse: {
                 name: 'createAppointment',
-                response: { 
-                  status: 'success', 
-                  id: appointment.id, 
-                  message: `Agendado para ${startTime.toLocaleString('pt-BR')}` 
-                }
+                response: { status: 'success', id: appointment.id, message: `Agendado para ${startTime.toLocaleString('pt-BR')}` }
               }
             }])
             return { response: funcRes.response.text(), action: 'appointment_created' }
 
           } catch (dbError) {
-            logger.error(dbError, 'Erro ao agendar')
+            logger.error(dbError, 'Erro agendamento')
             const errRes = await chatSession.sendMessage([{
-                functionResponse: {
-                    name: 'createAppointment',
-                    response: { status: 'error', message: 'Erro ao salvar no banco de dados.' }
-                }
+                functionResponse: { name: 'createAppointment', response: { status: 'error', message: 'Erro ao salvar.' } }
             }])
             return { response: errRes.response.text() }
           }
@@ -188,9 +173,6 @@ export class AIService {
 
     } catch (error: any) {
       logger.error({ error: error.message }, 'Erro Gemini API')
-      if (error.message.includes('404') || error.message.includes('not found')) {
-          return { response: "Erro de configuração do modelo de IA (404). Contate o suporte." }
-      }
       return { response: "Tive um problema técnico momentâneo. Pode repetir?" }
     }
   }

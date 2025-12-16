@@ -1,14 +1,14 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { TenantService } from '../services/tenant.service'
-import { prisma } from '../lib/prisma' // Importar prisma direto para listagens simples
+import { prisma } from '../lib/prisma'
 
 export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', async (req) => await req.jwtVerify())
   
   const tenantService = new TenantService()
 
-  // MEUS DADOS (Dashboard)
+  // MEUS DADOS
   app.get('/tenant/me', {
     schema: {
       tags: ['Company Settings'],
@@ -23,14 +23,24 @@ export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
             users: z.number(),
             customers: z.number(),
             messages: z.number(),
-            appointments: z.number().optional() // Opcional para evitar erro se faltar no banco
+            appointments: z.number().optional()
           })
+        }),
+        404: z.object({
+          message: z.string()
         })
       }
     }
-  }, async (req) => {
+  }, async (req, reply) => { // Adicionado 'reply'
     const { tenantId } = req.user as { tenantId: string }
-    return tenantService.getDetails(tenantId)
+    
+    const me = await tenantService.getDetails(tenantId)
+
+    if (!me) {
+      return reply.status(404).send({ message: "Tenant not found" })
+    }
+
+    return me
   })
 
   // ATUALIZAR DADOS
@@ -48,7 +58,7 @@ export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
     return tenantService.update(tenantId, req.body)
   })
 
-  // --- NOVA ROTA: LISTAR AGENDAMENTOS (Agenda) ---
+  // AGENDA
   app.get('/appointments', {
     schema: {
       tags: ['Company Settings'],
@@ -68,18 +78,12 @@ export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req) => {
     const { tenantId } = req.user as { tenantId: string }
     
-    // Busca agendamentos ordenados por data
     const appointments = await prisma.appointment.findMany({
       where: { tenantId },
-      include: { 
-        customer: { 
-          select: { name: true } 
-        } 
-      },
+      include: { customer: { select: { name: true } } },
       orderBy: { startTime: 'desc' }
     })
 
-    // Converter Date para String ISO para validação do Zod
     return appointments.map(app => ({
       ...app,
       startTime: app.startTime.toISOString()
