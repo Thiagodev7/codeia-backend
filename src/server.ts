@@ -11,11 +11,11 @@ import { authRoutes } from './routes/auth.routes'
 import { whatsappRoutes } from './routes/whatsapp.routes'
 import { userRoutes } from './routes/user.routes'
 import { tenantRoutes } from './routes/tenant.routes'
-import { aiRoutes } from './routes/ai.routes' // <--- DESCOMENTADO AQUI
+import { aiRoutes } from './routes/ai.routes'
+import { serviceRoutes } from './routes/service.routes'
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
 import { WhatsAppManager } from './services/whatsapp-manager.service'
-import { serviceRoutes } from './routes/service.routes'
 
 const app = Fastify()
 
@@ -42,6 +42,19 @@ app.register(jwt, {
   secret: process.env.JWT_SECRET || 'dev-secret' 
 })
 
+// --- LOG DE REQUISIÇÕES (AUDITORIA) ---
+// Isso vai mostrar no terminal quando o Frontend pedir para Pausar/Ativar
+app.addHook('preHandler', (req, reply, done) => {
+  if (req.body && (req.url.includes('/agents') || req.url.includes('/chat'))) {
+    logger.info({ 
+      method: req.method, 
+      url: req.url, 
+      body: req.body 
+    }, '📥 [API] Recebendo Requisição')
+  }
+  done()
+})
+
 // --- FRONTEND (Arquivos Estáticos) ---
 const publicPath = path.join(process.cwd(), 'public')
 
@@ -57,7 +70,7 @@ app.register(authRoutes)
 app.register(whatsappRoutes)
 app.register(userRoutes)
 app.register(tenantRoutes)
-app.register(aiRoutes) // <--- DESCOMENTADO AQUI TAMBÉM
+app.register(aiRoutes)
 app.register(serviceRoutes)
 
 // --- FUNÇÃO DE RESTAURAÇÃO DE SESSÕES ---

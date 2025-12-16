@@ -2,12 +2,21 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { AIService } from '../services/ai.service'
 import { prisma } from '../lib/prisma'
+import { logger } from '../lib/logger'
 
 export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', async (req) => await req.jwtVerify())
+  
+  app.addHook('onRequest', async (request) => {
+    try {
+      await request.jwtVerify()
+    } catch (err) {
+      throw new Error('Token inválido ou não fornecido')
+    }
+  })
+
   const aiService = new AIService()
 
-  // 1. LISTAR
+  // LISTAR
   app.get('/agents', {
     schema: {
       tags: ['AI Agents'],
@@ -18,7 +27,7 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
           name: z.string(),
           slug: z.string(),
           instructions: z.string(),
-          isActive: z.boolean() // Novo campo
+          isActive: z.boolean()
         }))
       }
     }
@@ -30,7 +39,7 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
     })
   })
 
-  // 2. CRIAR
+  // CRIAR
   app.post('/agents', {
     schema: {
       tags: ['AI Agents'],
@@ -47,7 +56,7 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
     return reply.status(201).send(agent)
   })
 
-  // 3. ATUALIZAR (Editar ou Pausar)
+  // --- ATUALIZAR (PAUSAR/EDITAR) ---
   app.put('/agents/:id', {
     schema: {
       tags: ['AI Agents'],
@@ -63,11 +72,18 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req, reply) => {
     const { tenantId } = req.user as { tenantId: string }
     const { id } = req.params
+    
+    // LOG DE DEBUG DO UPDATE
+    logger.info({ agentId: id, changes: req.body }, '🛠️ [API] Solicitando atualização de agente')
+
     const updated = await aiService.updateAgent(tenantId, id, req.body)
+    
+    logger.info({ active: updated.isActive }, '✅ [DB] Agente atualizado com sucesso.')
+    
     return reply.send(updated)
   })
 
-  // 4. DELETAR
+  // DELETAR
   app.delete('/agents/:id', {
     schema: {
       tags: ['AI Agents'],
@@ -81,7 +97,7 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
     return reply.status(204).send()
   })
 
-  // 5. TESTAR CHAT
+  // CHAT (TESTE)
   app.post('/chat', {
     schema: {
       tags: ['AI Agents'],
@@ -94,12 +110,16 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req, reply) => {
     const { tenantId } = req.user as { tenantId: string }
     const { agentId, message } = req.body
-    const result = await aiService.chat(agentId, message, { tenantId, customerId: 'TEST_PANEL' })
     
-    // Se estiver pausado, retorna aviso no teste
+    const result = await aiService.chat(agentId, message, { 
+      tenantId, 
+      customerId: 'TEST_API_USER' 
+    })
+    
     if (result.response === null) {
-        return reply.send({ response: "[SISTEMA]: Este agente está pausado e não responderá." })
+        return reply.send({ response: "[SISTEMA]: O agente está pausado e não respondeu." })
     }
+    
     return reply.send(result)
   })
 }

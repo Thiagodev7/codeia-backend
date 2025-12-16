@@ -50,7 +50,7 @@ export class WhatsAppManager {
     })
 
     client.on('qr', async (qr) => {
-      logger.info({ tenantId }, 'QR Code Gerado')
+      logger.info('QR Code Gerado')
       const qrImage = await QRCode.toDataURL(qr)
       
       this.sessions.set(tenantId, { 
@@ -68,7 +68,7 @@ export class WhatsAppManager {
 
     client.on('ready', async () => {
       const phoneNumber = client.info.wid.user
-      logger.info({ tenantId, phoneNumber }, 'WhatsApp Conectado!')
+      logger.info({ phoneNumber }, '✅ WhatsApp Conectado!')
 
       this.sessions.set(tenantId, { 
         status: 'CONNECTED', 
@@ -93,7 +93,7 @@ export class WhatsAppManager {
       })
     })
 
-    // --- LÓGICA DE MENSAGENS BLINDADA ---
+    // --- LÓGICA DE PROCESSAMENTO DE MENSAGENS ---
     client.on('message', async (msg) => {
       // 1. Filtros de Segurança (Ignora Grupos e Broadcasts)
       if (
@@ -105,7 +105,7 @@ export class WhatsAppManager {
       }
 
       try {
-        // --- PROTEÇÃO CONTRA ERRO "getIsMyContact" ---
+        // 2. Extração de Contato Blindada (Evita quebra se a lib falhar)
         let phone = msg.from.replace('@c.us', '');
         let contactName = 'Cliente';
 
@@ -114,11 +114,10 @@ export class WhatsAppManager {
             phone = contact.number;
             contactName = contact.pushname || contact.name || 'Cliente';
         } catch (contactError) {
-            logger.warn(`Falha ao obter dados do contato para ${msg.from}. Usando fallback.`);
+            // Silencioso, usa o fallback
         }
-        // ---------------------------------------------
 
-        // 2. Identifica ou Cria Cliente
+        // 3. Identifica ou Cria Cliente no Banco
         let customer = await prisma.customer.findUnique({
             where: { tenantId_phone: { tenantId, phone } }
         })
@@ -129,53 +128,78 @@ export class WhatsAppManager {
           })
         }
 
-        // 3. Salva Mensagem do Usuário
+        // 4. Salva a Mensagem do Usuário
         await prisma.message.create({
           data: { tenantId, customerId: customer.id, role: 'user', content: msg.body }
         })
 
-        // 4. Busca Agente Ativo (Pega o primeiro ativo)
-        const agent = await prisma.agent.findFirst({ where: { tenantId, isActive: true } })
+        // 5. Busca Agentes Ativos (Sistema de Exclusividade)
+        const activeAgents = await prisma.agent.findMany({ 
+            where: { tenantId, isActive: true } 
+        })
 
-        if (agent) {
-          logger.info(`🤖 [${agent.name}] Respondendo ${phone}...`)
+        logger.info(`🔍 [DEBUG] Mensagem de ${phone}. Agentes Ativos: ${activeAgents.length}`)
 
-          // 5. Histórico (Memória)
-          const previousMessages = await prisma.message.findMany({
+        if (activeAgents.length === 0) {
+            logger.warn(`⛔ [IGNORE] Nenhum agente ativo. O bot não responderá.`)
+            return
+        }
+
+        if (activeAgents.length > 1) {
+            logger.warn(`⚠️ [ALERTA] Múltiplos agentes ativos. Usando o primeiro: ${activeAgents[0].name}`)
+        }
+
+        const agent = activeAgents[0]
+        logger.info(`🤖 [ACTION] Agente "${agent.name}" iniciando resposta...`)
+
+        // 6. Preparação do Histórico (CORREÇÃO DO ERRO GEMINI)
+        const previousMessages = await prisma.message.findMany({
             where: { tenantId, customerId: customer.id },
             orderBy: { createdAt: 'desc' },
             take: 20 
-          })
+        })
 
-          // Formata para o Gemini (remove a msg atual para não duplicar no prompt)
-          const history: Content[] = previousMessages
-            .reverse()
-            .filter(m => m.content !== msg.body)
-            .map(m => ({
-              role: m.role === 'user' ? 'user' : 'model',
-              parts: [{ text: m.content }]
-            }))
+        // Organiza: Antiga -> Nova
+        let rawHistory = previousMessages.reverse();
 
-          // 6. Chama a IA
-          const aiRes = await this.aiService.chat(
+        // Evita duplicar a mensagem atual se ela já foi salva
+        rawHistory = rawHistory.filter(m => m.content !== msg.body);
+
+        // --- CORREÇÃO CRÍTICA AQUI ---
+        // O Gemini exige que o histórico comece com 'user'.
+        // Removemos mensagens do 'model' (bot) do início até achar uma do usuário.
+        while (rawHistory.length > 0 && rawHistory[0].role === 'model') {
+            rawHistory.shift(); 
+        }
+        // -----------------------------
+
+        // Formata para o SDK do Google
+        const history: Content[] = rawHistory.map(m => ({
+            role: m.role === 'user' ? 'user' : 'model',
+            parts: [{ text: m.content }]
+        }))
+
+        // 7. Chama a IA
+        const aiRes = await this.aiService.chat(
             agent.id, 
             msg.body, 
             { tenantId, customerId: customer.id },
             history
-          )
-          
-          // Se a IA não retornou null (não estava pausada)
-          if (aiRes.response) {
+        )
+        
+        // 8. Envia e Salva a Resposta
+        if (aiRes.response) {
             await msg.reply(aiRes.response)
 
-            // 7. Salva Resposta
             await prisma.message.create({
               data: { tenantId, customerId: customer.id, role: 'model', content: aiRes.response }
             })
-          }
+            
+            logger.info('✅ [REPLY] Resposta enviada com sucesso.')
         }
+
       } catch (err) {
-        logger.error({ err }, 'Erro crítico processando mensagem')
+        logger.error({ err }, '❌ Erro crítico processando mensagem')
       }
     })
 
