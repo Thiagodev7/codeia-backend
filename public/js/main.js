@@ -300,37 +300,45 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const emailInput = document.getElementById('email');
     const passInput = document.getElementById('password');
     
-    btn.disabled=true; btn.classList.add('btn-loading'); 
-    emailInput.classList.remove('input-error'); passInput.classList.remove('input-error');
+    // Feedback visual imediato
+    btn.disabled = true; 
+    btn.classList.add('btn-loading'); 
+    emailInput.classList.remove('input-error'); 
+    passInput.classList.remove('input-error');
     
     try {
         const res = await fetch(`${API_URL}/login`, { 
-            method:'POST', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({email: emailInput.value, password: passInput.value}) 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ email: emailInput.value, password: passInput.value }) 
         });
         
-        const data = await res.json().catch(()=>({error:'Erro servidor'}));
+        const data = await res.json().catch(() => ({ message: 'Erro de comunicação com o servidor' }));
         
-        if(res.ok) {
+        if (res.ok) {
             localStorage.setItem('token', data.token); 
             localStorage.setItem('user', JSON.stringify(data.user));
-            showToast('Bem-vindo! Carregando...', 'success'); 
+            showToast('Bem-vindo! Entrando...', 'success'); 
             
-            setTimeout(()=>{ 
+            setTimeout(() => { 
                 showAppLayout(); 
                 btn.classList.remove('btn-loading'); 
-                btn.disabled=false; 
+                btn.disabled = false; 
             }, 800);
         } else {
-            throw new Error(data.error || 'Credenciais inválidas');
+            // CORREÇÃO: O Fastify retorna o erro em 'message'
+            throw new Error(data.message || data.error || 'Erro desconhecido ao logar');
         }
-    } catch(err) {
+    } catch (err) {
+        console.error('Erro Login:', err); // Log no console do navegador também
         showToast(err.message, 'error'); 
+        
+        // Destaca os campos para o usuário saber onde errou
         passInput.classList.add('input-error'); 
         passInput.focus();
+        
         btn.classList.remove('btn-loading'); 
-        btn.disabled=false;
+        btn.disabled = false;
     }
 });
 

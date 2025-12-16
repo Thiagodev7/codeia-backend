@@ -20,19 +20,29 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
             role: z.string(),
             tenantId: z.string()
           })
+        }),
+        // Adicionei schema de erro para documentação
+        401: z.object({
+          message: z.string()
         })
       }
     }
   }, async (req, reply) => {
-    const service = new LoginService()
-    const { user } = await service.execute({ email: req.body.email, passwordPlain: req.body.password })
-    
-    const token = app.jwt.sign(
-      { role: user.role, tenantId: user.tenantId },
-      { sub: user.id, expiresIn: '7d' }
-    )
+    try {
+      const service = new LoginService()
+      const { user } = await service.execute({ email: req.body.email, passwordPlain: req.body.password })
+      
+      const token = app.jwt.sign(
+        { role: user.role, tenantId: user.tenantId },
+        { sub: user.id, expiresIn: '7d' }
+      )
 
-    return reply.send({ token, user })
+      return reply.send({ token, user })
+
+    } catch (error: any) {
+      // Retorna o erro exato (ex: "Senha incorreta") para a tela
+      return reply.status(401).send({ message: error.message })
+    }
   })
 
   app.post('/register', {
