@@ -33,6 +33,8 @@
                 <button onclick="navigate('dashboard')" class="nav-item active" id="nav-dashboard"><i data-lucide="layout-grid"></i> <span>Dashboard</span></button>
                 <button onclick="navigate('services')" class="nav-item" id="nav-services"><i data-lucide="box"></i> <span>Serviços</span></button>
                 <button onclick="navigate('calendar')" class="nav-item" id="nav-calendar"><i data-lucide="calendar-clock"></i> <span>Agenda</span></button>
+                <button onclick="navigate('monitor')" class="nav-item" id="nav-monitor"><i data-lucide="message-circle"></i> <span>Monitoramento</span></button>
+                
                 <button onclick="navigate('agents')" class="nav-item" id="nav-agents"><i data-lucide="cpu"></i> <span>Agentes IA</span></button>
                 <button onclick="navigate('chat')" class="nav-item" id="nav-chat"><i data-lucide="message-square-code"></i> <span>Simulador</span></button>
             </nav>
@@ -107,6 +109,30 @@
                             <thead><tr><th>Cliente</th><th>Serviço</th><th>Data</th><th>Status</th></tr></thead>
                             <tbody id="appointments-list"></tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-monitor" class="view-section hidden" style="padding: 0; height: 100%;">
+                <div class="chat-container" style="height: 100%; border: none; border-radius: 0;">
+                    <div class="chat-sidebar" style="width: 320px; background: var(--glass-panel);">
+                        <div style="padding-bottom: 1rem; border-bottom: 1px solid var(--glass-border); margin-bottom: 1rem;">
+                            <h4 style="color: var(--primary);">Conversas Ativas</h4>
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">Atualizado em tempo real</small>
+                        </div>
+                        <div id="monitor-list" style="overflow-y: auto; height: calc(100% - 60px); display: flex; flex-direction: column; gap: 0.5rem;">
+                            </div>
+                    </div>
+
+                    <div class="chat-window" style="background: radial-gradient(circle at center, rgba(6,182,212,0.02) 0%, transparent 70%);">
+                        <div id="monitor-header" style="padding: 1rem; border-bottom: 1px solid var(--glass-border); display: none;">
+                            <h3 id="monitor-client-name" style="margin:0;">Nome do Cliente</h3>
+                            <small id="monitor-client-phone" style="color: var(--text-muted);">+55...</small>
+                        </div>
+                        
+                        <div id="monitor-messages" class="messages-area" style="flex: 1;">
+                            <div class="msg ai">Selecione uma conversa ao lado para monitorar. 👈</div>
+                        </div>
                     </div>
                 </div>
             </div>

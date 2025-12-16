@@ -1,4 +1,4 @@
-// Se estiver rodando local, usa localhost. Se estiver na VPS, usa a URL oficial.
+// URL dinâmica para Produção e Localhost
 const API_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:3333' 
     : 'https://codemais.com';
@@ -40,25 +40,46 @@ function updateThemeIcons() {
 }
 
 // --- NAVEGAÇÃO SPA ---
+let monitorInterval; // Variável para controlar o polling do monitoramento
+
 function navigate(view) {
+    // 1. Atualiza Menu
     document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
     const navItem = document.getElementById(`nav-${view}`);
     if(navItem) navItem.classList.add('active');
 
+    // 2. Troca Tela
     document.querySelectorAll('.view-section').forEach(e => e.classList.add('hidden'));
-    document.getElementById(`view-${view}`).classList.remove('hidden');
+    const viewEl = document.getElementById(`view-${view}`);
+    if(viewEl) viewEl.classList.remove('hidden');
     
+    // 3. Atualiza Título
     const titles = { 
         'dashboard': 'Visão Geral', 'services': 'Catálogo de Serviços',
-        'agents': 'Meus Agentes', 'chat': 'Laboratório de IA', 'calendar': 'Agenda' 
+        'agents': 'Meus Agentes', 'chat': 'Laboratório de IA', 'calendar': 'Agenda',
+        'monitor': 'Monitoramento em Tempo Real'
     };
     document.getElementById('page-title').innerText = titles[view] || 'CodeIA';
 
+    // 4. Limpeza de Intervalos (Para não ficar rodando em background)
+    if (monitorInterval) clearInterval(monitorInterval);
+
+    // 5. Carrega Dados Específicos
     if(view==='services') loadServices();
     if(view==='agents') loadAgents();
     if(view==='calendar') loadAppointments();
     if(view==='chat') loadAgentsForChat();
     if(view==='dashboard') loadDashboardStats();
+    
+    // 6. Lógica do Monitoramento
+    if(view === 'monitor') {
+        loadConversations();
+        // Atualiza a cada 5 segundos
+        monitorInterval = setInterval(() => {
+            loadConversations(false); // false = sem loading na tela
+            if (activeCustomerId) loadChatHistory(activeCustomerId);
+        }, 5000);
+    }
 }
 
 function showAppLayout() {
@@ -66,6 +87,8 @@ function showAppLayout() {
     document.getElementById('app-layout').classList.remove('hidden');
     const user = JSON.parse(localStorage.getItem('user'));
     if(user) document.getElementById('sidebar-user-name').innerText = user.name.split(' ')[0];
+    
+    // Inicia no Dashboard
     navigate('dashboard');
     startStatusPolling();
 }
@@ -88,7 +111,6 @@ async function loadServices() {
 
         services.forEach(s => {
             const price = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(s.price);
-            // Escapa aspas simples para não quebrar o JSON no onclick
             const safeService = JSON.stringify(s).replace(/'/g, "&#39;");
             
             tbody.innerHTML += `
@@ -181,7 +203,6 @@ async function loadAgents() {
 
         agents.forEach(agent => {
             const isActive = agent.isActive ? 'checked' : '';
-            // Proteção de aspas para o JSON
             const safeAgent = JSON.stringify(agent).replace(/'/g, "&#39;");
 
             const card = document.createElement('div'); card.className = 'card agent-card';
@@ -271,24 +292,16 @@ window.deleteAgent = async function(id) {
 
 window.toggleAgentStatus = async function(id, isActive, checkboxElement) {
     const token = localStorage.getItem('token');
-    
     try {
         const res = await fetch(`${API_URL}/agents/${id}`, { 
             method:'PUT', 
             headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`}, 
             body: JSON.stringify({isActive}) 
         });
-        
         if(!res.ok) throw new Error();
-        
-        showToast(isActive ? 'Agente ativado (outros pausados)' : 'Agente pausado');
-        
-        // RECARREGA A LISTA PARA ATUALIZAR OS OUTROS BOTÕES
-        // Isso faz com que os outros agentes fiquem "cinza" automaticamente
+        showToast(isActive ? 'Agente ativado' : 'Agente pausado');
         setTimeout(() => loadAgents(), 300); 
-
     } catch(e) { 
-        // Reverte o visual se der erro
         checkboxElement.checked = !isActive;
         showToast('Erro ao alterar status', 'error'); 
     }
@@ -328,17 +341,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                 btn.disabled = false; 
             }, 800);
         } else {
-            // Agora pegamos a mensagem exata que o backend mandou
             throw new Error(data.message || 'Erro desconhecido');
         }
     } catch (err) {
-        console.error(err); // Log no navegador
+        console.error(err); 
         showToast(err.message, 'error'); 
-        
-        // Se o erro for de senha ou usuário, destaca o campo
         passInput.classList.add('input-error'); 
         passInput.focus();
-        
         btn.classList.remove('btn-loading'); 
         btn.disabled = false;
     }
@@ -346,6 +355,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
 function logout() { localStorage.removeItem('token'); window.location.reload(); }
 
+// --- AGENDA ---
 async function loadAppointments() {
     const token = localStorage.getItem('token');
     const tbody = document.getElementById('appointments-list');
@@ -365,6 +375,7 @@ async function loadAppointments() {
     } catch(e) { tbody.innerHTML='<tr><td colspan="4">Erro ao carregar agenda.</td></tr>'; }
 }
 
+// --- CHAT SIMULADOR ---
 async function loadAgentsForChat() {
     const token = localStorage.getItem('token');
     const select = document.getElementById('chat-agent-select');
@@ -410,6 +421,7 @@ function appendMessage(role, text) {
     area.scrollTop = area.scrollHeight;
 }
 
+// --- DASHBOARD ---
 async function loadDashboardStats() {
     try { 
         const res = await fetch(`${API_URL}/tenant/me`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); 
@@ -422,6 +434,7 @@ async function loadDashboardStats() {
     } catch(e){}
 }
 
+// --- STATUS WHATSAPP ---
 let pollInterval;
 function startStatusPolling() { 
     if(pollInterval) clearInterval(pollInterval); 
@@ -480,4 +493,109 @@ function showToast(msg, type='success') {
     const t = document.createElement('div'); t.className = `toast ${type}`; t.innerText = msg;
     document.getElementById('toast-container').appendChild(t); 
     setTimeout(()=>t.remove(), 3000);
+}
+
+// --- MÓDULO DE MONITORAMENTO (CRM) ---
+let activeCustomerId = null;
+
+async function loadConversations(showLoading = true) {
+    const token = localStorage.getItem('token');
+    const list = document.getElementById('monitor-list');
+    
+    if (showLoading) list.innerHTML = '<p style="padding:1rem; text-align:center; color:var(--text-muted)">Carregando...</p>';
+
+    try {
+        const res = await fetch(`${API_URL}/crm/conversations`, { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        const convs = await res.json();
+
+        if (showLoading) list.innerHTML = '';
+        
+        if (convs.length === 0 && showLoading) {
+            list.innerHTML = '<p style="padding:1rem; text-align:center; color:var(--text-muted)">Nenhuma conversa iniciada.</p>';
+            return;
+        }
+
+        const currentHTML = list.innerHTML;
+        let newHTML = '';
+
+        convs.forEach(c => {
+            const activeClass = (c.id === activeCustomerId) ? 'background:var(--glass-highlight); border-color:var(--primary);' : '';
+            const date = new Date(c.updatedAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+            
+            newHTML += `
+                <div onclick="selectConversation('${c.id}', '${c.name}', '${c.phone}')" 
+                     style="padding: 1rem; border: 1px solid var(--glass-border); border-radius: 12px; cursor: pointer; transition: 0.2s; ${activeClass}"
+                     onmouseover="this.style.background='var(--glass-highlight)'" 
+                     onmouseout="this.style.background='${c.id === activeCustomerId ? 'var(--glass-highlight)' : 'transparent'}'">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-weight:600; color:var(--text-main);">${c.name}</span>
+                        <small style="font-size:0.7rem; color:var(--text-muted);">${date}</small>
+                    </div>
+                    <div style="font-size:0.85rem; color:var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ${c.lastMessage}
+                    </div>
+                </div>
+            `;
+        });
+
+        if (list.innerHTML !== newHTML && !showLoading) {
+             list.innerHTML = newHTML;
+        } else if (showLoading) {
+             list.innerHTML = newHTML;
+        }
+
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+window.selectConversation = function(id, name, phone) {
+    activeCustomerId = id;
+    document.getElementById('monitor-header').style.display = 'block';
+    document.getElementById('monitor-client-name').innerText = name;
+    document.getElementById('monitor-client-phone').innerText = `+${phone}`;
+    
+    loadConversations(false);
+    loadChatHistory(id);
+}
+
+async function loadChatHistory(customerId) {
+    const token = localStorage.getItem('token');
+    const area = document.getElementById('monitor-messages');
+    
+    try {
+        const res = await fetch(`${API_URL}/crm/conversations/${customerId}/messages`, { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        const msgs = await res.json();
+
+        area.innerHTML = ''; 
+
+        msgs.forEach(m => {
+            const div = document.createElement('div');
+            const isModel = m.role === 'model';
+            div.className = `msg ${isModel ? 'user' : 'ai'}`; 
+            
+            if (isModel) {
+                div.style.alignSelf = 'flex-end';
+                div.style.background = 'linear-gradient(135deg, var(--secondary), #6366f1)';
+                div.style.color = 'white';
+                div.innerHTML = `<strong>🤖 IA:</strong><br>${m.content}`;
+            } else {
+                div.style.alignSelf = 'flex-start';
+                div.style.background = 'var(--glass-surface)';
+                div.style.color = 'var(--text-main)';
+                div.innerHTML = `<strong>👤 Cliente:</strong><br>${m.content}`;
+            }
+            
+            area.appendChild(div);
+        });
+
+        area.scrollTop = area.scrollHeight;
+
+    } catch (e) {
+        console.error(e);
+    }
 }
