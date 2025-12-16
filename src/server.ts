@@ -36,14 +36,15 @@ app.register(fastifySwagger, {
 app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
 // --- PLUGINS GERAIS ---
-app.register(cors)
+app.register(cors, { 
+  origin: true // Permite acesso de qualquer origem (importante para evitar bloqueio no navegador)
+})
 
 app.register(jwt, { 
   secret: process.env.JWT_SECRET || 'dev-secret' 
 })
 
 // --- LOG DE REQUISIÇÕES (AUDITORIA) ---
-// Isso vai mostrar no terminal quando o Frontend pedir para Pausar/Ativar
 app.addHook('preHandler', (req, reply, done) => {
   if (req.body && (req.url.includes('/agents') || req.url.includes('/chat'))) {
     logger.info({ 
@@ -91,9 +92,9 @@ async function restoreSessions() {
 }
 
 // --- START ---
-app.listen({ port: 3333 }).then(async () => {
-  logger.info('🚀 CodeIA Backend rodando em http://localhost:3333')
-  logger.info('📑 Documentação em http://localhost:3333/docs')
+app.listen({ port: 3333, host: '0.0.0.0' }).then(async (address) => {
+  logger.info(`🚀 CodeIA Backend rodando em ${address}`)
+  logger.info(`📑 Documentação em ${address}/docs`)
   
   await restoreSessions()
 })
