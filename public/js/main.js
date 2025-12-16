@@ -300,7 +300,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const emailInput = document.getElementById('email');
     const passInput = document.getElementById('password');
     
-    // Feedback visual imediato
     btn.disabled = true; 
     btn.classList.add('btn-loading'); 
     emailInput.classList.remove('input-error'); 
@@ -313,12 +312,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             body: JSON.stringify({ email: emailInput.value, password: passInput.value }) 
         });
         
-        const data = await res.json().catch(() => ({ message: 'Erro de comunicação com o servidor' }));
+        const data = await res.json().catch(() => ({ message: 'Erro interno no servidor' }));
         
         if (res.ok) {
             localStorage.setItem('token', data.token); 
             localStorage.setItem('user', JSON.stringify(data.user));
-            showToast('Bem-vindo! Entrando...', 'success'); 
+            showToast('Login realizado! Entrando...', 'success'); 
             
             setTimeout(() => { 
                 showAppLayout(); 
@@ -326,14 +325,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                 btn.disabled = false; 
             }, 800);
         } else {
-            // CORREÇÃO: O Fastify retorna o erro em 'message'
-            throw new Error(data.message || data.error || 'Erro desconhecido ao logar');
+            // Agora pegamos a mensagem exata que o backend mandou
+            throw new Error(data.message || 'Erro desconhecido');
         }
     } catch (err) {
-        console.error('Erro Login:', err); // Log no console do navegador também
+        console.error(err); // Log no navegador
         showToast(err.message, 'error'); 
         
-        // Destaca os campos para o usuário saber onde errou
+        // Se o erro for de senha ou usuário, destaca o campo
         passInput.classList.add('input-error'); 
         passInput.focus();
         

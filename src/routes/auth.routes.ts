@@ -21,7 +21,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
             tenantId: z.string()
           })
         }),
-        // Adicionei schema de erro para documentação
+        // Mapeia o erro 401 para o Swagger/Frontend
         401: z.object({
           message: z.string()
         })
@@ -40,7 +40,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       return reply.send({ token, user })
 
     } catch (error: any) {
-      // Retorna o erro exato (ex: "Senha incorreta") para a tela
+      // Captura o erro do Service e devolve limpo para o frontend
       return reply.status(401).send({ message: error.message })
     }
   })

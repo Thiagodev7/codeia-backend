@@ -9,25 +9,26 @@ interface LoginInput {
 
 export class LoginService {
   async execute({ email, passwordPlain }: LoginInput) {
-    // Log para saber que alguém tentou
+    // 1. Log de entrada
     logger.info({ email }, '🔐 [AUTH] Tentativa de login recebida')
 
     const user = await prisma.user.findUnique({ where: { email } })
 
+    // 2. Erro de Usuário Inexistente
     if (!user) {
-      // Log específico para você ver no terminal
-      logger.warn({ email }, '❌ [AUTH] Falha: Usuário não encontrado no banco')
-      throw new Error('Este e-mail não está cadastrado.')
+      logger.warn({ email }, '❌ [AUTH] Falha: E-mail não encontrado no banco')
+      throw new Error('Este e-mail não possui cadastro.')
     }
 
     const isPasswordValid = await compare(passwordPlain, user.passwordHash)
 
+    // 3. Erro de Senha
     if (!isPasswordValid) {
-      // Log específico de senha errada
       logger.warn({ email }, '❌ [AUTH] Falha: Senha incorreta')
-      throw new Error('Senha incorreta. Tente novamente.')
+      throw new Error('Senha incorreta.')
     }
 
+    // 4. Sucesso
     logger.info({ email, userId: user.id }, '✅ [AUTH] Login realizado com sucesso')
 
     return {
