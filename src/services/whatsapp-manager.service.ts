@@ -156,7 +156,7 @@ export class WhatsAppManager {
         const previousMessages = await prisma.message.findMany({
             where: { tenantId, customerId: customer.id },
             orderBy: { createdAt: 'desc' },
-            take: 20 
+            take: 30 
         })
 
         // Organiza: Antiga -> Nova
