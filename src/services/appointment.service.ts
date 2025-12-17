@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
-import { startOfMinute, isBefore, addMinutes } from 'date-fns'
+import { startOfMinute, isBefore, addMinutes, subHours } from 'date-fns'
 
 interface CreateAppointmentDTO {
   tenantId: string
@@ -20,9 +20,10 @@ export class AppointmentService {
       where: {
         tenantId,
         customerId,
-        status: 'SCHEDULED', // Apenas agendamentos ativos
+        status: 'SCHEDULED',
         startTime: {
-          gte: new Date() // Apenas futuros
+          // Busca agendamentos de até 2 horas atrás em diante (para não sumir imediatamente)
+          gte: subHours(new Date(), 2) 
         }
       },
       orderBy: { startTime: 'asc' },
@@ -32,20 +33,13 @@ export class AppointmentService {
 
   // --- CANCELAR ---
   async cancelAppointment(tenantId: string, customerId: string, appointmentId: string) {
-    // Verifica propriedade antes de cancelar
     const appointment = await prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId, customerId }
     })
 
-    if (!appointment) {
-      throw new Error('NOT_FOUND: Agendamento não encontrado ou não pertence a você.')
-    }
+    if (!appointment) throw new Error('NOT_FOUND: Agendamento não encontrado ou não pertence a você.')
+    if (appointment.status === 'CANCELED') throw new Error('ALREADY_CANCELED: Já estava cancelado.')
 
-    if (appointment.status === 'CANCELED') {
-      throw new Error('ALREADY_CANCELED: Este agendamento já foi cancelado.')
-    }
-
-    // Soft Delete (Muda status para CANCELED)
     return prisma.appointment.update({
       where: { id: appointmentId },
       data: { status: 'CANCELED' }
@@ -54,14 +48,22 @@ export class AppointmentService {
 
   // --- REMARCAR ---
   async rescheduleAppointment(tenantId: string, customerId: string, appointmentId: string, newStartTime: Date) {
+    // 1. Normalização e Validação
     const startTime = startOfMinute(newStartTime)
+    const now = new Date()
 
-    if (isBefore(startTime, new Date())) {
-      throw new Error('VALIDATION_ERROR: Não é possível reagendar para o passado.')
+    // LOG DE DEBUG PARA O ERRO DE DATA
+    if (isBefore(startTime, now)) {
+      logger.warn({ 
+        tentativa: startTime.toISOString(), 
+        agora: now.toISOString(),
+        diff: (startTime.getTime() - now.getTime()) 
+      }, '⚠️ Bloqueio: Tentativa de agendar no passado')
+      
+      throw new Error('VALIDATION_ERROR: Data no passado.')
     }
 
     return prisma.$transaction(async (tx) => {
-      // 1. Busca o agendamento original para pegar a duração e validar dono
       const original = await tx.appointment.findFirst({
         where: { id: appointmentId, tenantId, customerId },
         include: { service: true }
@@ -69,16 +71,15 @@ export class AppointmentService {
 
       if (!original) throw new Error('NOT_FOUND: Agendamento não encontrado.')
       
-      // Define duração: usa a do serviço vinculado ou assume 60min se for personalizado
       const duration = original.service ? original.service.duration : 60
       const endTime = addMinutes(startTime, duration)
 
-      // 2. Validação de Conflito (Overlap) - IGNORANDO o próprio agendamento atual
+      // 2. Validação de Conflito
       const conflict = await tx.appointment.findFirst({
         where: {
           tenantId,
           status: 'SCHEDULED',
-          id: { not: appointmentId }, // <--- CRÍTICO: Não colidir consigo mesmo
+          id: { not: appointmentId },
           AND: [
             { startTime: { lt: endTime } },
             { endTime: { gt: startTime } }
@@ -86,11 +87,8 @@ export class AppointmentService {
         }
       })
 
-      if (conflict) {
-        throw new Error('CONFLICT_ERROR: O novo horário solicitado já está ocupado.')
-      }
+      if (conflict) throw new Error('CONFLICT_ERROR: Horário ocupado.')
 
-      // 3. Atualiza
       const updated = await tx.appointment.update({
         where: { id: appointmentId },
         data: {
@@ -100,17 +98,23 @@ export class AppointmentService {
         }
       })
 
-      logger.info({ appointmentId, newDate: startTime }, '🔄 [Appointment] Remarcado com sucesso.')
+      logger.info({ id: appointmentId, newDate: startTime }, '🔄 Agendamento remarcado.')
       return updated
     })
   }
 
-  // --- CRIAR (Mantido da versão anterior com melhoria de reuso) ---
+  // --- CRIAR ---
   async createAppointment(data: CreateAppointmentDTO) {
     const startTime = startOfMinute(data.startTime)
-    
-    if (isBefore(startTime, new Date())) {
-      throw new Error('VALIDATION_ERROR: Não é possível agendar em uma data/hora passada.')
+    const now = new Date()
+
+    // LOG DE DEBUG
+    if (isBefore(startTime, now)) {
+      logger.warn({ 
+        tentativa: startTime.toISOString(), 
+        agora: now.toISOString() 
+      }, '⚠️ Bloqueio: Data no passado')
+      throw new Error('VALIDATION_ERROR: Data no passado.')
     }
 
     return prisma.$transaction(async (tx) => {
@@ -159,7 +163,7 @@ export class AppointmentService {
           customerId: data.customerId,
           serviceId: serviceIdToSave,
           title: finalTitle,
-          description: serviceIdToSave ? `Agendado via IA. Duração: ${duration}min` : `Personalizado. Duração: ${duration}min`,
+          description: serviceIdToSave ? `Via IA (${duration}min)` : `Personalizado (${duration}min)`,
           startTime,
           endTime,
           status: 'SCHEDULED'
@@ -167,6 +171,7 @@ export class AppointmentService {
         include: { customer: true, service: true }
       })
 
+      logger.info({ id: appointment.id }, '✅ Agendamento criado.')
       return appointment
     })
   }
