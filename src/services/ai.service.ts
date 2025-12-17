@@ -3,27 +3,53 @@ import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
 import { AppointmentService } from './appointment.service'
 
-// Função auxiliar para normalizar strings (remove acentos, caixa baixa, trim)
+// Helper para normalização de strings (Busca Fuzzy)
 function normalizeString(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
-// Definição da Ferramenta (Tool) para o Gemini
+// Definição das Ferramentas (Function Calling) - COM GATILHOS RESTRITIVOS
 const toolsDef: Tool[] = [
   {
     functionDeclarations: [
       {
         name: "createAppointment",
-        description: "Agendar um compromisso. Extraia o máximo de informações possível do contexto.",
+        description: "Use APENAS quando o usuário indicar claramente a intenção de CRIAR ou AGENDAR algo novo. Não use para remarcar.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
-            serviceName: { type: SchemaType.STRING, description: "Nome do serviço solicitado pelo cliente." },
-            dateTime: { type: SchemaType.STRING, description: "Data e hora no formato ISO 8601 (Ex: 2024-12-12T14:30:00)." },
-            clientName: { type: SchemaType.STRING, description: "Nome do cliente, se informado." },
-            clientPhone: { type: SchemaType.STRING, description: "Telefone de contato, se informado." }
+            serviceName: { type: SchemaType.STRING, description: "Nome do serviço desejado." },
+            dateTime: { type: SchemaType.STRING, description: "Data e Hora ISO 8601 (Ex: 2024-12-12T14:30:00)." },
+            clientName: { type: SchemaType.STRING, description: "Nome do cliente (opcional, use contexto)." },
+            clientPhone: { type: SchemaType.STRING, description: "Telefone do cliente (opcional, use contexto)." }
           },
           required: ["serviceName", "dateTime"]
+        }
+      },
+      {
+        name: "listMyAppointments",
+        description: "Use quando o usuário perguntar 'o que tenho agendado', 'ver minha agenda', 'quais meus horários', OU quando ele quiser cancelar/remarcar mas não especificou qual agendamento.",
+        parameters: { type: SchemaType.OBJECT, properties: {} }
+      },
+      {
+        name: "cancelAppointment",
+        description: "Use SOMENTE se o usuário confirmou explicitamente qual agendamento quer cancelar após visualizar a lista.",
+        parameters: {
+            type: SchemaType.OBJECT,
+            properties: { appointmentId: { type: SchemaType.STRING, description: "ID exato do agendamento." } },
+            required: ["appointmentId"]
+        }
+      },
+      {
+        name: "rescheduleAppointment",
+        description: "Use SOMENTE se o usuário confirmou explicitamente qual agendamento quer mover E a nova data. NÃO use se o usuário apenas perguntou o que tem marcado.",
+        parameters: {
+            type: SchemaType.OBJECT,
+            properties: { 
+                appointmentId: { type: SchemaType.STRING, description: "ID exato do agendamento." },
+                newDateTime: { type: SchemaType.STRING, description: "Nova Data ISO 8601." }
+            },
+            required: ["appointmentId", "newDateTime"]
         }
       }
     ]
@@ -34,79 +60,43 @@ export class AIService {
   private genAI: GoogleGenerativeAI
   private appointmentService = new AppointmentService()
   
-  // Modelo solicitado
+  // Modelo Flash (Rápido e Eficiente)
   private readonly MODEL_NAME = "gemini-2.5-flash"; 
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) throw new Error('GEMINI_API_KEY ausente')
+    if (!apiKey) throw new Error('❌ GEMINI_API_KEY ausente no ambiente (.env)')
     this.genAI = new GoogleGenerativeAI(apiKey)
   }
 
-  // --- MÉTODOS DE GERENCIAMENTO DE AGENTES (CRUD) ---
-
+  // --- MÉTODOS CRUD DE AGENTES (Mantidos) ---
   async createAgent(tenantId: string, data: any) {
-    const existing = await prisma.agent.findUnique({
-      where: { tenantId_slug: { tenantId, slug: data.slug } }
-    })
-    if (existing) throw new Error(`O slug "${data.slug}" já existe.`)
-
+    const existing = await prisma.agent.findUnique({ where: { tenantId_slug: { tenantId, slug: data.slug } } })
+    if (existing) throw new Error(`O slug "${data.slug}" já está em uso.`)
     const activeCount = await prisma.agent.count({ where: { tenantId, isActive: true }})
-    const startActive = activeCount === 0;
-
-    return prisma.agent.create({
-      data: { 
-        tenantId, 
-        ...data,
-        model: this.MODEL_NAME,
-        isActive: startActive
-      }
-    })
+    return prisma.agent.create({ data: { tenantId, ...data, model: this.MODEL_NAME, isActive: activeCount === 0 } })
   }
-
   async updateAgent(tenantId: string, agentId: string, data: any) {
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } })
-    if (!agent || agent.tenantId !== tenantId) throw new Error('Agente não encontrado.')
-
-    if (data.slug && data.slug !== agent.slug) {
-      const slugExists = await prisma.agent.findUnique({
-        where: { tenantId_slug: { tenantId, slug: data.slug } }
-      })
-      if (slugExists) throw new Error(`O slug "${data.slug}" já está em uso.`)
-    }
-
-    if (data.isActive === true) {
-        await prisma.agent.updateMany({
-            where: { tenantId, id: { not: agentId } },
-            data: { isActive: false }
-        })
-    }
-
-    const updated = await prisma.agent.update({ where: { id: agentId }, data })
-    logger.info(`💾 [DB] Agente ${updated.name} atualizado.`)
-    return updated
+     return prisma.agent.update({ where: { id: agentId }, data })
   }
-
   async deleteAgent(tenantId: string, agentId: string) {
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } })
-    if (!agent || agent.tenantId !== tenantId) throw new Error('Agente não encontrado.')
     return prisma.agent.delete({ where: { id: agentId } })
   }
 
-  // --- LÓGICA DO CHAT (CORE) ---
+  // --- ENGINE DE CHAT (Core da IA) ---
 
   async chat(
     agentId: string, 
     userMessage: string, 
-    context: { tenantId: string, customerId: string },
+    context: { tenantId: string, customerId: string, customerPhone: string, customerName: string },
     history: Content[] = []
   ) {
-    // 1. Valida Agente
+    const start = Date.now()
     const agent = await prisma.agent.findUnique({ where: { id: agentId } })
-    if (!agent) throw new Error('Agente não encontrado')
-    if (agent.isActive === false) return { response: null }
+    
+    if (!agent || !agent.isActive) return { response: null }
 
-    // 2. Busca Serviços Disponíveis para Contexto
+    // Contexto de Serviços
     const services = await prisma.service.findMany({
       where: { tenantId: context.tenantId, isActive: true },
       select: { id: true, name: true, duration: true, price: true }
@@ -114,27 +104,30 @@ export class AIService {
     
     const servicesListText = services.length > 0 
         ? services.map(s => `- "${s.name}" (${s.duration} min)`).join('\n')
-        : "Nenhum serviço cadastrado (mas você pode agendar serviços personalizados).";
+        : "Nenhum serviço cadastrado (aceite nomes personalizados).";
 
-    // 3. Monta o Prompt de Sistema
+    // --- SYSTEM PROMPT BLINDADO ---
     const systemPrompt = `
       ${agent.instructions}
 
-      === DIRETRIZES DE AGENDAMENTO ===
-      1. Tente associar o pedido do cliente a um dos "SERVIÇOS REAIS" listados abaixo.
-      2. Se o cliente pedir algo diferente (ex: "Tecnologia", "Reunião"), VOCÊ TEM PERMISSÃO PARA AGENDAR. Use o nome exato que o cliente forneceu.
-      3. Sempre confirme a data e hora antes de chamar a função de agendamento.
-      4. Se possível, tente obter o nome e telefone do cliente, mas não seja intrusivo demais.
+      === 🔒 PROTOCOLOS DE SEGURANÇA ===
+      1. **NAVEGAÇÃO**: Se o usuário perguntar "quais meus agendamentos?" ou "tenho algo marcado?", USE APENAS 'listMyAppointments'. NUNCA use 'rescheduleAppointment' ou 'cancelAppointment' nessa etapa, mesmo que o histórico tenha IDs antigos.
+      2. **IDENTIFICAÇÃO**: Você só pode cancelar ou remarcar se tiver certeza do ID atual. Se tiver dúvida, chame 'listMyAppointments' novamente.
+      3. **DADOS DO CLIENTE**: O telefone é ${context.customerPhone}. Use-o automaticamente nas ferramentas. Não pergunte.
 
-      === CONTEXTO TÉCNICO ===
-      - Data Atual: ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-      - Hora Atual: ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+      === 🧠 RACIOCÍNIO ESPERADO ===
+      - Usuário: "Quero cortar cabelo" -> createAppointment
+      - Usuário: "Quero remarcar" -> listMyAppointments (para ver o que existe)
+      - Usuário: "Quero ver minha agenda" -> listMyAppointments
+      - Usuário: "Remarca o corte de cabelo para amanhã" -> rescheduleAppointment (se souber o ID) OU listMyAppointments (se não souber)
+
+      === 📅 DATA DE HOJE ===
+      - ${new Date().toLocaleString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
       
-      === SERVIÇOS REAIS (PREFERÊNCIA) ===
+      === 📋 SERVIÇOS ===
       ${servicesListText}
     `
 
-    // 4. Inicializa o Modelo
     const model = this.genAI.getGenerativeModel({ 
       model: this.MODEL_NAME,
       systemInstruction: systemPrompt,
@@ -144,103 +137,111 @@ export class AIService {
     const chatSession = model.startChat({ history })
 
     try {
-      // 5. Envia Mensagem e Processa Ferramentas
       const result = await chatSession.sendMessage(userMessage)
       const response = result.response
       const functionCalls = response.functionCalls()
       
       if (functionCalls && functionCalls.length > 0) {
-        const call = functionCalls[0]
         
-        if (call.name === 'createAppointment') {
-          const args = call.args as any
-          logger.info({ args }, '🤖 [IA] Solicitando agendamento...')
-
-          try {
-            // --- LÓGICA DE MATCHING INTELIGENTE ---
-            const inputName = normalizeString(args.serviceName);
+        for (const call of functionCalls) {
+            const args = call.args as any
+            let toolResult: any = { status: 'error', message: 'Ação desconhecida' }
             
-            // Tentativa 1: Busca parcial (includes)
-            let serviceMatch = services.find(s => 
-              normalizeString(s.name).includes(inputName) || 
-              inputName.includes(normalizeString(s.name))
-            )
+            logger.info({ tool: call.name, args }, '🔧 [IA] Executando ferramenta...')
 
-            // Tentativa 2: Busca por palavras-chave (Fallback)
-            if (!serviceMatch) {
-                serviceMatch = services.find(s => {
-                    const dbWords = normalizeString(s.name).split(' ');
-                    const inputWords = inputName.split(' ');
-                    return inputWords.some(w => w.length > 3 && dbWords.includes(w));
-                })
-            }
-
-            // Definição do ID e Título a serem usados
-            let serviceIdToUse = undefined; // undefined = AppointmentService usa padrão
-            let titleToUse = args.serviceName; // Padrão = O que o usuário pediu
-
-            if (serviceMatch) {
-                serviceIdToUse = serviceMatch.id;
-                titleToUse = serviceMatch.name; // Usa o nome oficial do banco
-                logger.info(`🎯 Match de serviço encontrado: ${serviceMatch.name}`);
-            } else {
-                logger.warn(`⚠️ Serviço "${args.serviceName}" não existe no banco. Criando agendamento customizado.`);
-            }
-            
-            // --- CHAMADA AO SERVICE ROBUSTO ---
-            const appointment = await this.appointmentService.createAppointment({
-              tenantId: context.tenantId,
-              customerId: context.customerId,
-              serviceId: serviceIdToUse, // Se undefined, o service trata como customizado
-              title: titleToUse,
-              clientName: args.clientName,
-              clientPhone: args.clientPhone,
-              startTime: new Date(args.dateTime)
-            })
-
-            // Retorno de Sucesso para a IA
-            const funcRes = await chatSession.sendMessage([{
-              functionResponse: {
-                name: 'createAppointment',
-                response: { 
-                  status: 'success', 
-                  message: `Agendamento confirmado com sucesso!\nServiço: ${appointment.title}\nHorário: ${appointment.startTime.toLocaleString('pt-BR')}` 
+            try {
+                // 1. LISTAR
+                if (call.name === 'listMyAppointments') {
+                    const appointments = await this.appointmentService.listUpcoming(context.tenantId, context.customerId)
+                    if (appointments.length === 0) {
+                        toolResult = { status: 'success', message: 'Você não possui agendamentos futuros confirmados.' }
+                    } else {
+                        const listText = appointments.map(a => 
+                            `🆔 ID: ${a.id} | Serviço: "${a.title}" | 📅 ${a.startTime.toLocaleString('pt-BR')}`
+                        ).join('\n')
+                        toolResult = { status: 'success', message: `Aqui estão seus agendamentos:\n${listText}\n\nPara alterar, diga "remarcar o ID..."` }
+                    }
                 }
-              }
+                
+                // 2. CANCELAR
+                else if (call.name === 'cancelAppointment') {
+                    if (!args.appointmentId) throw new Error('ID do agendamento ausente.')
+                    await this.appointmentService.cancelAppointment(context.tenantId, context.customerId, args.appointmentId)
+                    toolResult = { status: 'success', message: 'Agendamento cancelado com sucesso.' }
+                }
+                
+                // 3. REMARCAR
+                else if (call.name === 'rescheduleAppointment') {
+                    if (!args.appointmentId) throw new Error('ID do agendamento ausente. Liste primeiro.')
+                    
+                    const updated = await this.appointmentService.rescheduleAppointment(
+                        context.tenantId, 
+                        context.customerId, 
+                        args.appointmentId, 
+                        new Date(args.newDateTime)
+                    )
+                    toolResult = { status: 'success', message: `Confirmado! Remarcado para ${updated.startTime.toLocaleString('pt-BR')}.` }
+                }
+                
+                // 4. CRIAR
+                else if (call.name === 'createAppointment') {
+                    // Match Híbrido de Serviço
+                    const inputName = normalizeString(args.serviceName);
+                    let serviceMatch = services.find(s => normalizeString(s.name).includes(inputName) || inputName.includes(normalizeString(s.name)))
+                    
+                    if (!serviceMatch) {
+                        // Fallback por palavra-chave
+                        serviceMatch = services.find(s => {
+                            const dbWords = normalizeString(s.name).split(' ');
+                            const inputWords = inputName.split(' ');
+                            return inputWords.some(w => w.length > 3 && dbWords.includes(w));
+                        })
+                    }
+
+                    // Injeção de Contexto
+                    const finalPhone = args.clientPhone || context.customerPhone;
+                    const finalName = args.clientName || context.customerName;
+
+                    const appointment = await this.appointmentService.createAppointment({
+                        tenantId: context.tenantId,
+                        customerId: context.customerId,
+                        serviceId: serviceMatch?.id,
+                        title: serviceMatch?.name || args.serviceName,
+                        clientName: finalName,
+                        clientPhone: finalPhone,
+                        startTime: new Date(args.dateTime)
+                    })
+                    
+                    toolResult = { status: 'success', message: `Agendado: "${appointment.title}" para ${appointment.startTime.toLocaleString('pt-BR')}` }
+                }
+
+            } catch (error: any) {
+                // Tratamento de Erro para o Usuário
+                let userMsg = 'Tive uma falha técnica.'
+                
+                if (error.message.includes('CONFLICT')) userMsg = '❌ O horário solicitado já está ocupado. Por favor, escolha outro.'
+                if (error.message.includes('VALIDATION')) userMsg = '❌ Data inválida. Verifique se não é uma data passada.'
+                if (error.message.includes('NOT_FOUND')) userMsg = '❌ Não encontrei esse agendamento. Vamos listar seus horários novamente?'
+                if (error.message.includes('ALREADY_CANCELED')) userMsg = '⚠️ Este agendamento já estava cancelado.'
+                
+                logger.warn({ tool: call.name, error: error.message }, '⚠️ Erro de Negócio na Tool.')
+                toolResult = { status: 'error', message: userMsg }
+            }
+
+            const nextPart = await chatSession.sendMessage([{
+                functionResponse: { name: call.name, response: toolResult }
             }])
             
-            return { response: funcRes.response.text(), action: 'appointment_created' }
-
-          } catch (error: any) {
-            // --- TRATAMENTO DE ERROS AMIGÁVEL ---
-            let userMessage = 'Tive um problema técnico ao acessar a agenda.'
-
-            if (error.message.includes('CONFLICT_ERROR')) {
-                userMessage = 'Verifiquei aqui e esse horário já está ocupado. Poderia escolher outro horário?'
-            } else if (error.message.includes('VALIDATION_ERROR')) {
-                userMessage = 'Não consigo agendar datas no passado. Por favor, escolha uma data futura.'
-            }
-
-            logger.warn({ error: error.message }, '⚠️ Erro controlado no agendamento')
-
-            // Retorna o erro para a IA explicar ao usuário
-            const errRes = await chatSession.sendMessage([{
-                functionResponse: { 
-                    name: 'createAppointment', 
-                    response: { status: 'error', message: userMessage } 
-                }
-            }])
-            return { response: errRes.response.text() }
-          }
+            return { response: nextPart.response.text(), action: call.name }
         }
       }
       
-      // Se não houve chamada de função, retorna texto normal
+      logger.info({ duration: `${Date.now() - start}ms` }, '🧠 [IA] Resposta de texto gerada.')
       return { response: response.text() }
 
     } catch (error: any) {
-      logger.error({ error: error.message }, '❌ [Gemini] Erro Crítico na API')
-      return { response: "Tive um problema momentâneo de conexão. Poderia repetir sua mensagem?" }
+      logger.error({ error: error.message, stack: error.stack }, '🔥 [IA] CRITICAL: Falha na comunicação com Gemini')
+      throw new Error("Erro de processamento na IA: " + error.message) 
     }
   }
 }

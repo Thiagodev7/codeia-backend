@@ -35,9 +35,12 @@ export class WhatsAppManager {
   }
 
   async startClient(tenantId: string) {
-    if (this.clients.has(tenantId)) return
+    if (this.clients.has(tenantId)) {
+        logger.info({ tenantId }, '⚠️ [WhatsApp] Cliente já está rodando para este Tenant.')
+        return
+    }
 
-    logger.info({ tenantId }, 'Iniciando cliente WhatsApp...')
+    logger.info({ tenantId }, '🔄 [WhatsApp] Iniciando serviço...')
     
     this.sessions.set(tenantId, { status: 'STARTING', qrCode: null, phoneNumber: null })
 
@@ -49,8 +52,10 @@ export class WhatsAppManager {
       }
     })
 
+    // --- EVENTOS DO CLIENTE ---
+
     client.on('qr', async (qr) => {
-      logger.info('QR Code Gerado')
+      logger.info({ tenantId }, '📱 [WhatsApp] QR Code gerado. Aguardando leitura...')
       const qrImage = await QRCode.toDataURL(qr)
       
       this.sessions.set(tenantId, { 
@@ -68,7 +73,7 @@ export class WhatsAppManager {
 
     client.on('ready', async () => {
       const phoneNumber = client.info.wid.user
-      logger.info({ phoneNumber }, '✅ WhatsApp Conectado!')
+      logger.info({ tenantId, phoneNumber }, '✅ [WhatsApp] Conectado e Pronto!')
 
       this.sessions.set(tenantId, { 
         status: 'CONNECTED', 
@@ -83,7 +88,7 @@ export class WhatsAppManager {
     })
 
     client.on('disconnected', async (reason) => {
-      logger.warn({ tenantId, reason }, 'WhatsApp Desconectado')
+      logger.warn({ tenantId, reason }, '❌ [WhatsApp] Desconectado.')
       this.clients.delete(tenantId)
       this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
       
@@ -93,7 +98,8 @@ export class WhatsAppManager {
       })
     })
 
-    // --- LÓGICA DE PROCESSAMENTO DE MENSAGENS ---
+    // --- LÓGICA PRINCIPAL DE MENSAGENS ---
+
     client.on('message', async (msg) => {
       // 1. Filtros de Segurança (Ignora Grupos e Broadcasts)
       if (
@@ -104,8 +110,10 @@ export class WhatsAppManager {
         return
       }
 
+      const start = Date.now()
+      
       try {
-        // 2. Extração de Contato Blindada (Evita quebra se a lib falhar)
+        // 2. Extração de Contato Blindada
         let phone = msg.from.replace('@c.us', '');
         let contactName = 'Cliente';
 
@@ -114,8 +122,15 @@ export class WhatsAppManager {
             phone = contact.number;
             contactName = contact.pushname || contact.name || 'Cliente';
         } catch (contactError) {
-            // Silencioso, usa o fallback
+            logger.warn({ from: msg.from }, '⚠️ [WhatsApp] Falha ao obter dados detalhados do contato (usando fallback).')
         }
+
+        logger.info({ 
+            tenantId, 
+            from: phone, 
+            name: contactName, 
+            body: msg.body 
+        }, '📥 [WhatsApp] Mensagem Recebida')
 
         // 3. Identifica ou Cria Cliente no Banco
         let customer = await prisma.customer.findUnique({
@@ -123,67 +138,63 @@ export class WhatsAppManager {
         })
 
         if (!customer) {
+          logger.info({ phone, name: contactName }, '🆕 [CRM] Novo cliente detectado. Registrando...')
           customer = await prisma.customer.create({
             data: { tenantId, phone, name: contactName }
           })
         }
 
-        // 4. Salva a Mensagem do Usuário
+        // 4. Salva a Mensagem do Usuário no Histórico
         await prisma.message.create({
           data: { tenantId, customerId: customer.id, role: 'user', content: msg.body }
         })
 
-        // 5. Busca Agentes Ativos (Sistema de Exclusividade)
+        // 5. Busca Agentes Ativos
         const activeAgents = await prisma.agent.findMany({ 
             where: { tenantId, isActive: true } 
         })
 
-        logger.info(`🔍 [DEBUG] Mensagem de ${phone}. Agentes Ativos: ${activeAgents.length}`)
-
         if (activeAgents.length === 0) {
-            logger.warn(`⛔ [IGNORE] Nenhum agente ativo. O bot não responderá.`)
+            logger.debug({ tenantId }, '⛔ [IA] Nenhum agente ativo para responder.')
             return
         }
 
-        if (activeAgents.length > 1) {
-            logger.warn(`⚠️ [ALERTA] Múltiplos agentes ativos. Usando o primeiro: ${activeAgents[0].name}`)
-        }
-
         const agent = activeAgents[0]
-        logger.info(`🤖 [ACTION] Agente "${agent.name}" iniciando resposta...`)
+        logger.info({ agentId: agent.id, agentName: agent.name }, '🤖 [IA] Acionando Agente...')
 
-        // 6. Preparação do Histórico (CORREÇÃO DO ERRO GEMINI)
+        // 6. Preparação do Histórico (Context Window)
         const previousMessages = await prisma.message.findMany({
             where: { tenantId, customerId: customer.id },
             orderBy: { createdAt: 'desc' },
-            take: 30 
+            take: 20 
         })
 
-        // Organiza: Antiga -> Nova
         let rawHistory = previousMessages.reverse();
-
-        // Evita duplicar a mensagem atual se ela já foi salva
+        
+        // Evita duplicar a última mensagem no prompt
         rawHistory = rawHistory.filter(m => m.content !== msg.body);
 
-        // --- CORREÇÃO CRÍTICA AQUI ---
-        // O Gemini exige que o histórico comece com 'user'.
-        // Removemos mensagens do 'model' (bot) do início até achar uma do usuário.
+        // Regra do Gemini: Histórico deve começar com 'user'
         while (rawHistory.length > 0 && rawHistory[0].role === 'model') {
             rawHistory.shift(); 
         }
-        // -----------------------------
 
-        // Formata para o SDK do Google
         const history: Content[] = rawHistory.map(m => ({
             role: m.role === 'user' ? 'user' : 'model',
             parts: [{ text: m.content }]
         }))
 
-        // 7. Chama a IA
+        // 7. Chama a IA com CONTEXTO ENRIQUECIDO (Injeção de Dependência de Dados)
+        // Aqui passamos o telefone e nome para que a IA não precise perguntar
         const aiRes = await this.aiService.chat(
             agent.id, 
             msg.body, 
-            { tenantId, customerId: customer.id },
+            { 
+                tenantId, 
+                customerId: customer.id,
+                customerPhone: phone,      // <--- DADO CRÍTICO
+                customerName: contactName  // <--- DADO CRÍTICO
+            },
             history
         )
         
@@ -194,34 +205,50 @@ export class WhatsAppManager {
             await prisma.message.create({
               data: { tenantId, customerId: customer.id, role: 'model', content: aiRes.response }
             })
-            
-            logger.info('✅ [REPLY] Resposta enviada com sucesso.')
+
+            const duration = Date.now() - start
+            logger.info({ 
+                duration: `${duration}ms`, 
+                to: phone 
+            }, '📤 [WhatsApp] Resposta enviada com sucesso')
         }
 
-      } catch (err) {
-        logger.error({ err }, '❌ Erro crítico processando mensagem')
+      } catch (err: any) {
+        logger.error({ err: err.message, stack: err.stack }, '❌ [WhatsApp] Erro crítico no pipeline de mensagens')
+        
+        // Feedback para o usuário final em caso de erro fatal
+        try {
+            await msg.reply("⚠️ Desculpe, tive um erro técnico interno ao processar sua mensagem. Por favor, tente novamente em alguns instantes.")
+        } catch (replyErr) {
+            logger.error('Falha crítica: Não foi possível enviar mensagem de erro ao usuário.', replyErr)
+        }
       }
     })
 
+    // Inicialização do Cliente Puppeteer
     try {
         await client.initialize()
         this.clients.set(tenantId, client)
     } catch (error) {
-        logger.error({error}, 'Falha fatal ao inicializar cliente')
+        logger.error({error}, '💀 [WhatsApp] Falha fatal ao inicializar cliente do Puppeteer')
         this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
     }
   }
 
   async stopClient(tenantId: string) {
+    logger.info({ tenantId }, '🛑 [WhatsApp] Solicitando parada do cliente...')
     const client = this.clients.get(tenantId)
+    
     if (client) {
         try {
             await client.destroy()
+            logger.info({ tenantId }, '✅ [WhatsApp] Cliente destruído com sucesso.')
         } catch (e) {
-            logger.error('Erro ao destruir sessão', e)
+            logger.error({ error: e, tenantId }, '⚠️ [WhatsApp] Erro ao destruir sessão')
         }
         this.clients.delete(tenantId)
     }
+    
     this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
     
     await prisma.whatsAppSession.update({
