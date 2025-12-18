@@ -15,7 +15,14 @@ export class WhatsAppManager {
   private static instance: WhatsAppManager
   private clients: Map<string, Client> = new Map()
   private sessions: Map<string, SessionInfo> = new Map()
+  
+  // NOVO: Gerenciador de Timeouts para evitar consumo de RAM
+  private qrTimeouts: Map<string, NodeJS.Timeout> = new Map()
+  
   private aiService = new AIService()
+
+  // Configuração: Tempo máximo para ler o QR Code (2 minutos)
+  private readonly QR_TIMEOUT_MS = 120 * 1000; 
 
   private constructor() {}
 
@@ -35,12 +42,13 @@ export class WhatsAppManager {
   }
 
   async startClient(tenantId: string) {
+    // Se já existe e está conectado/iniciando, não faz nada
     if (this.clients.has(tenantId)) {
-        logger.info({ tenantId }, '⚠️ [WhatsApp] Cliente já está rodando para este Tenant.')
+        logger.info({ tenantId }, '⚠️ [WhatsApp] Cliente já está ativo. Ignorando nova solicitação.')
         return
     }
 
-    logger.info({ tenantId }, '🔄 [WhatsApp] Iniciando serviço...')
+    logger.info({ tenantId }, '🔄 [WhatsApp] Alocando recursos e iniciando navegador...')
     
     this.sessions.set(tenantId, { status: 'STARTING', qrCode: null, phoneNumber: null })
 
@@ -48,14 +56,23 @@ export class WhatsAppManager {
       authStrategy: new LocalAuth({ clientId: tenantId }),
       puppeteer: { 
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+        // Otimizações de Memória para o Puppeteer
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // Evita crash em ambientes Docker/Linux com pouca memória
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ] 
       }
     })
 
     // --- EVENTOS DO CLIENTE ---
 
     client.on('qr', async (qr) => {
-      logger.info({ tenantId }, '📱 [WhatsApp] QR Code gerado. Aguardando leitura...')
+      logger.info({ tenantId }, '📱 [WhatsApp] QR Code gerado.')
       const qrImage = await QRCode.toDataURL(qr)
       
       this.sessions.set(tenantId, { 
@@ -69,9 +86,25 @@ export class WhatsAppManager {
         create: { tenantId, status: 'QRCODE' },
         update: { status: 'QRCODE' }
       })
+
+      // --- LOGICA DE TIMEOUT (MEMORY LEAK PROTECTION) ---
+      // Se não houver um timer rodando, inicia um.
+      if (!this.qrTimeouts.has(tenantId)) {
+          logger.info({ tenantId }, `⏳ [WhatsApp] Iniciando timer de expiração (${this.QR_TIMEOUT_MS / 1000}s)...`)
+          
+          const timeout = setTimeout(async () => {
+              logger.warn({ tenantId }, '⏰ [WhatsApp] Tempo limite do QR Code excedido. Encerrando processo para liberar memória.')
+              await this.stopClient(tenantId)
+          }, this.QR_TIMEOUT_MS)
+
+          this.qrTimeouts.set(tenantId, timeout)
+      }
     })
 
     client.on('ready', async () => {
+      // Limpa o timer de timeout, pois conectou com sucesso
+      this.clearQrTimeout(tenantId)
+
       const phoneNumber = client.info.wid.user
       logger.info({ tenantId, phoneNumber }, '✅ [WhatsApp] Conectado e Pronto!')
 
@@ -87,8 +120,17 @@ export class WhatsAppManager {
       })
     })
 
+    client.on('auth_failure', async () => {
+        logger.error({ tenantId }, '❌ [WhatsApp] Falha na autenticação. Reiniciando sessão...')
+        this.clearQrTimeout(tenantId)
+        await this.stopClient(tenantId)
+    })
+
     client.on('disconnected', async (reason) => {
       logger.warn({ tenantId, reason }, '❌ [WhatsApp] Desconectado.')
+      this.clearQrTimeout(tenantId)
+      
+      // Remove da memória
       this.clients.delete(tenantId)
       this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
       
@@ -101,7 +143,6 @@ export class WhatsAppManager {
     // --- LÓGICA PRINCIPAL DE MENSAGENS ---
 
     client.on('message', async (msg) => {
-      // 1. Filtros de Segurança (Ignora Grupos e Broadcasts)
       if (
         msg.from.includes('@g.us') ||       
         msg.from === 'status@broadcast' ||  
@@ -113,7 +154,6 @@ export class WhatsAppManager {
       const start = Date.now()
       
       try {
-        // 2. Extração de Contato Blindada
         let phone = msg.from.replace('@c.us', '');
         let contactName = 'Cliente';
 
@@ -122,7 +162,7 @@ export class WhatsAppManager {
             phone = contact.number;
             contactName = contact.pushname || contact.name || 'Cliente';
         } catch (contactError) {
-            logger.warn({ from: msg.from }, '⚠️ [WhatsApp] Falha ao obter dados detalhados do contato (usando fallback).')
+            logger.warn({ from: msg.from }, '⚠️ [WhatsApp] Falha ao obter dados detalhados do contato.')
         }
 
         logger.info({ 
@@ -132,7 +172,6 @@ export class WhatsAppManager {
             body: msg.body 
         }, '📥 [WhatsApp] Mensagem Recebida')
 
-        // 3. Identifica ou Cria Cliente no Banco
         let customer = await prisma.customer.findUnique({
             where: { tenantId_phone: { tenantId, phone } }
         })
@@ -144,12 +183,10 @@ export class WhatsAppManager {
           })
         }
 
-        // 4. Salva a Mensagem do Usuário no Histórico
         await prisma.message.create({
           data: { tenantId, customerId: customer.id, role: 'user', content: msg.body }
         })
 
-        // 5. Busca Agentes Ativos
         const activeAgents = await prisma.agent.findMany({ 
             where: { tenantId, isActive: true } 
         })
@@ -162,7 +199,6 @@ export class WhatsAppManager {
         const agent = activeAgents[0]
         logger.info({ agentId: agent.id, agentName: agent.name }, '🤖 [IA] Acionando Agente...')
 
-        // 6. Preparação do Histórico (Context Window)
         const previousMessages = await prisma.message.findMany({
             where: { tenantId, customerId: customer.id },
             orderBy: { createdAt: 'desc' },
@@ -170,11 +206,8 @@ export class WhatsAppManager {
         })
 
         let rawHistory = previousMessages.reverse();
-        
-        // Evita duplicar a última mensagem no prompt
         rawHistory = rawHistory.filter(m => m.content !== msg.body);
 
-        // Regra do Gemini: Histórico deve começar com 'user'
         while (rawHistory.length > 0 && rawHistory[0].role === 'model') {
             rawHistory.shift(); 
         }
@@ -184,21 +217,18 @@ export class WhatsAppManager {
             parts: [{ text: m.content }]
         }))
 
-        // 7. Chama a IA com CONTEXTO ENRIQUECIDO (Injeção de Dependência de Dados)
-        // Aqui passamos o telefone e nome para que a IA não precise perguntar
         const aiRes = await this.aiService.chat(
             agent.id, 
             msg.body, 
             { 
                 tenantId, 
                 customerId: customer.id,
-                customerPhone: phone,      // <--- DADO CRÍTICO
-                customerName: contactName  // <--- DADO CRÍTICO
+                customerPhone: phone,
+                customerName: contactName
             },
             history
         )
         
-        // 8. Envia e Salva a Resposta
         if (aiRes.response) {
             await msg.reply(aiRes.response)
 
@@ -214,29 +244,33 @@ export class WhatsAppManager {
         }
 
       } catch (err: any) {
-        logger.error({ err: err.message, stack: err.stack }, '❌ [WhatsApp] Erro crítico no pipeline de mensagens')
+        logger.error({ err: err.message, stack: err.stack }, '❌ [WhatsApp] Erro crítico no pipeline')
         
-        // Feedback para o usuário final em caso de erro fatal
         try {
-            await msg.reply("⚠️ Desculpe, tive um erro técnico interno ao processar sua mensagem. Por favor, tente novamente em alguns instantes.")
+            await msg.reply("⚠️ Desculpe, tive um erro técnico interno. Por favor, tente novamente.")
         } catch (replyErr) {
-            logger.error('Falha crítica: Não foi possível enviar mensagem de erro ao usuário.', replyErr)
+            logger.error('Falha crítica ao enviar erro.', replyErr)
         }
       }
     })
 
-    // Inicialização do Cliente Puppeteer
+    // Inicialização
     try {
         await client.initialize()
         this.clients.set(tenantId, client)
     } catch (error) {
-        logger.error({error}, '💀 [WhatsApp] Falha fatal ao inicializar cliente do Puppeteer')
+        logger.error({error}, '💀 [WhatsApp] Falha fatal ao inicializar Puppeteer')
+        this.clearQrTimeout(tenantId)
         this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
     }
   }
 
   async stopClient(tenantId: string) {
-    logger.info({ tenantId }, '🛑 [WhatsApp] Solicitando parada do cliente...')
+    logger.info({ tenantId }, '🛑 [WhatsApp] Parando cliente e liberando memória...')
+    
+    // Garante que não há timers pendentes
+    this.clearQrTimeout(tenantId)
+
     const client = this.clients.get(tenantId)
     
     if (client) {
@@ -255,5 +289,14 @@ export class WhatsAppManager {
         where: { tenantId },
         data: { status: 'DISCONNECTED' }
     })
+  }
+
+  // Helper para limpar o timeout
+  private clearQrTimeout(tenantId: string) {
+      if (this.qrTimeouts.has(tenantId)) {
+          clearTimeout(this.qrTimeouts.get(tenantId))
+          this.qrTimeouts.delete(tenantId)
+          logger.debug({ tenantId }, '⏱️ [WhatsApp] Timer de QR Code cancelado.')
+      }
   }
 }
