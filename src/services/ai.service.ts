@@ -60,7 +60,7 @@ export class AIService {
   private appointmentService = new AppointmentService()
   
   // Modelo Flash para baixa latência
-  private readonly MODEL_NAME = "gemini-2.5-flash"; 
+  private readonly MODEL_NAME = "gemini-2.0-flash-lite"; 
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY
