@@ -111,9 +111,14 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
     const { tenantId } = req.user as { tenantId: string }
     const { agentId, message } = req.body
     
+    // CORREÇÃO AQUI:
+    // Como é um teste via API, passamos dados "fake" para satisfazer o TypeScript.
+    // No WhatsApp real, esses dados vêm da mensagem real.
     const result = await aiService.chat(agentId, message, { 
       tenantId, 
-      customerId: 'TEST_API_USER' 
+      customerId: 'TEST_API_USER_ID',
+      customerPhone: '99999999999',    // Telefone fictício para teste
+      customerName: 'Usuário de Teste API' // Nome fictício para teste
     })
     
     if (result.response === null) {
