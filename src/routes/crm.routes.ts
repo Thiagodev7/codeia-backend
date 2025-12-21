@@ -1,14 +1,29 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
+import { Errors } from '../lib/errors'
 
+/**
+ * Rotas de CRM (Monitoramento)
+ * Visualização de conversas e histórico de mensagens dos clientes.
+ */
 export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', async (req) => await req.jwtVerify())
+  app.addHook('onRequest', async (req) => {
+    try {
+      await req.jwtVerify()
+    } catch (err) {
+      throw Errors.Unauthorized('Token inválido')
+    }
+  })
 
-  // 1. LISTAR CONVERSAS (Clientes que têm mensagens)
+  // ---------------------------------------------------------------------------
+  // GET /crm/conversations - Listar Conversas Ativas
+  // ---------------------------------------------------------------------------
   app.get('/crm/conversations', {
     schema: {
-      tags: ['CRM'],
+      tags: ['CRM / Monitoramento'],
+      summary: 'Listar Conversas',
+      description: 'Retorna lista de clientes com conversas recentes, ordenados por última mensagem.',
       security: [{ bearerAuth: [] }],
       response: {
         200: z.array(z.object({
@@ -16,18 +31,18 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
           name: z.string().nullable(),
           phone: z.string(),
           lastMessage: z.string().nullable(),
-          updatedAt: z.string() // Data da última mensagem
+          updatedAt: z.string()
         }))
       }
     }
   }, async (req) => {
     const { tenantId } = req.user as { tenantId: string }
 
-    // Busca clientes que têm mensagens, ordenados pelos mais recentes
+    // Busca clientes que possuem mensagens
     const customers = await prisma.customer.findMany({
       where: { 
         tenantId,
-        messages: { some: {} } // Só traz quem tem mensagem
+        messages: { some: {} } 
       },
       include: {
         messages: {
@@ -37,7 +52,7 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
       }
     })
 
-    // Ordena via código (quem tem mensagem mais nova primeiro)
+    // Ordenação em memória: Clientes com mensagens mais recentes primeiro
     const sorted = customers.sort((a, b) => {
       const dateA = a.messages[0]?.createdAt.getTime() || 0
       const dateB = b.messages[0]?.createdAt.getTime() || 0
@@ -53,12 +68,16 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
     }))
   })
 
-  // 2. PEGAR HISTÓRICO DE UM CLIENTE
+  // ---------------------------------------------------------------------------
+  // GET /crm/conversations/:customerId/messages - Histórico de Chat
+  // ---------------------------------------------------------------------------
   app.get('/crm/conversations/:customerId/messages', {
     schema: {
-      tags: ['CRM'],
+      tags: ['CRM / Monitoramento'],
+      summary: 'Histórico de Mensagens',
+      description: 'Recupera o chat completo entre a IA e o cliente.',
       security: [{ bearerAuth: [] }],
-      params: z.object({ customerId: z.string() }),
+      params: z.object({ customerId: z.string().uuid() }),
       response: {
         200: z.array(z.object({
           id: z.string(),
@@ -74,7 +93,7 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
 
     const messages = await prisma.message.findMany({
       where: { tenantId, customerId },
-      orderBy: { createdAt: 'asc' } // Do mais antigo pro mais novo
+      orderBy: { createdAt: 'asc' } // Ordem cronológica (antigo -> novo)
     })
 
     return messages.map(m => ({

@@ -7,7 +7,12 @@ interface CreateServiceInput {
   description?: string
 }
 
+/**
+ * Service de Catálogo de Serviços
+ * Gerencia os serviços (ex: Corte, Manicure) que a IA pode agendar.
+ */
 export class ServiceService {
+  
   async list(tenantId: string) {
     return prisma.service.findMany({
       where: { tenantId, isActive: true },
@@ -25,7 +30,7 @@ export class ServiceService {
   }
 
   async delete(tenantId: string, id: string) {
-    // Soft delete para não quebrar histórico de agendamentos
+    // Soft Delete para preservar histórico de agendamentos passados
     return prisma.service.updateMany({
       where: { id, tenantId },
       data: { isActive: false }

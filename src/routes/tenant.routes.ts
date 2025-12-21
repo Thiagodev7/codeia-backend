@@ -1,17 +1,32 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { TenantService } from '../services/tenant.service'
-import { prisma } from '../lib/prisma'
+import { Errors } from '../lib/errors'
 
+/**
+ * Rotas da Empresa (Tenant)
+ * Configurações da conta e dados da organização.
+ */
 export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', async (req) => await req.jwtVerify())
+  // Middleware de Segurança
+  app.addHook('onRequest', async (req) => {
+    try {
+      await req.jwtVerify()
+    } catch (err) {
+      throw Errors.Unauthorized('Token inválido ou expirado.')
+    }
+  })
   
   const tenantService = new TenantService()
 
-  // MEUS DADOS
+  // ---------------------------------------------------------------------------
+  // GET /tenant/me - Dados da Empresa
+  // ---------------------------------------------------------------------------
   app.get('/tenant/me', {
     schema: {
-      tags: ['Company Settings'],
+      tags: ['Configurações da Empresa'],
+      summary: 'Dados da Empresa',
+      description: 'Retorna detalhes da conta, plano atual e contadores para o dashboard.',
       security: [{ bearerAuth: [] }],
       response: {
         200: z.object({
@@ -25,68 +40,42 @@ export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
             messages: z.number(),
             appointments: z.number().optional()
           })
-        }),
-        404: z.object({
-          message: z.string()
         })
       }
     }
-  }, async (req, reply) => { // Adicionado 'reply'
+  }, async (req, reply) => {
     const { tenantId } = req.user as { tenantId: string }
     
+    // O Service já lança AppError se não encontrar
     const me = await tenantService.getDetails(tenantId)
-
-    if (!me) {
-      return reply.status(404).send({ message: "Tenant not found" })
-    }
 
     return me
   })
 
-  // ATUALIZAR DADOS
+  // ---------------------------------------------------------------------------
+  // PUT /tenant/me - Atualizar Dados
+  // ---------------------------------------------------------------------------
   app.put('/tenant/me', {
     schema: {
-      tags: ['Company Settings'],
+      tags: ['Configurações da Empresa'],
+      summary: 'Atualizar Dados',
+      description: 'Atualiza informações cadastrais da empresa.',
       security: [{ bearerAuth: [] }],
       body: z.object({
         name: z.string().optional(),
         phone: z.string().optional()
-      })
-    }
-  }, async (req) => {
-    const { tenantId } = req.user as { tenantId: string }
-    return tenantService.update(tenantId, req.body)
-  })
-
-  // AGENDA
-  app.get('/appointments', {
-    schema: {
-      tags: ['Company Settings'],
-      security: [{ bearerAuth: [] }],
+      }),
       response: {
-        200: z.array(z.object({
+        200: z.object({
           id: z.string(),
-          title: z.string(),
-          startTime: z.string(),
-          status: z.string(),
-          customer: z.object({ 
-            name: z.string().nullable() 
-          }).nullable()
-        }))
+          name: z.string(),
+          updatedAt: z.date()
+        })
       }
     }
-  }, async (req) => {
+  }, async (req, reply) => {
     const { tenantId } = req.user as { tenantId: string }
-    
-    const appointments = await prisma.appointment.findMany({
-      where: { tenantId },
-      include: { customer: { select: { name: true } } },
-      orderBy: { startTime: 'desc' }
-    })
-
-    return appointments.map(app => ({
-      ...app,
-      startTime: app.startTime.toISOString()
-    }))
+    const updated = await tenantService.update(tenantId, req.body)
+    return reply.send(updated)
   })
 }

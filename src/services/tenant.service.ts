@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma'
+import { Errors } from '../lib/errors'
 
 interface UpdateTenantInput {
   name?: string
@@ -6,10 +7,14 @@ interface UpdateTenantInput {
   document?: string
 }
 
+/**
+ * Service de Gestão da Empresa (Tenant)
+ * Manipula dados da própria conta/organização.
+ */
 export class TenantService {
-  // BUSCAR DADOS (Dashboard)
+  
   async getDetails(tenantId: string) {
-    return prisma.tenant.findUnique({
+    const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
       include: {
         _count: {
@@ -17,9 +22,11 @@ export class TenantService {
         }
       }
     })
+
+    if (!tenant) throw Errors.NotFound('Empresa não encontrada.')
+    return tenant
   }
 
-  // ATUALIZAR
   async update(tenantId: string, data: UpdateTenantInput) {
     return prisma.tenant.update({
       where: { id: tenantId },
@@ -27,11 +34,8 @@ export class TenantService {
     })
   }
 
-  // DELETAR CONTA (Perigo!)
   async delete(tenantId: string) {
-    // Em produção, isso aqui desencadearia uma cascata de deleções.
-    // O Prisma faz isso se configurado com onDelete: Cascade no Schema.
-    // Por segurança, vamos apenas marcar como inativo.
+    // Soft Delete: Mantemos os dados por questões legais/segurança, apenas inativamos.
     return prisma.tenant.update({
       where: { id: tenantId },
       data: { isActive: false }

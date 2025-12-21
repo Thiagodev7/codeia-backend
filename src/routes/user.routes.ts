@@ -1,18 +1,31 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { UserService } from '../services/user.service'
+import { Errors } from '../lib/errors'
 
+/**
+ * Rotas de Usuários (Equipe)
+ * Gestão de membros do time que têm acesso ao painel.
+ */
 export const userRoutes: FastifyPluginAsyncZod = async (app) => {
-  // Middleware de Segurança (Todas as rotas exigem Login)
-  app.addHook('onRequest', async (req) => await req.jwtVerify())
+  app.addHook('onRequest', async (req) => {
+    try {
+      await req.jwtVerify()
+    } catch (err) {
+      throw Errors.Unauthorized('Token inválido')
+    }
+  })
 
   const userService = new UserService()
 
-  // LISTAR
+  // ---------------------------------------------------------------------------
+  // GET /users - Listar Equipe
+  // ---------------------------------------------------------------------------
   app.get('/users', {
     schema: {
-      tags: ['Team Management'],
-      summary: 'Listar usuários da equipe',
+      tags: ['Gestão de Equipe'],
+      summary: 'Listar Usuários',
+      description: 'Retorna todos os usuários cadastrados na conta da empresa.',
       security: [{ bearerAuth: [] }],
       response: {
         200: z.array(z.object({
@@ -29,19 +42,28 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
     return userService.listByTenant(tenantId)
   })
 
-  // CRIAR
+  // ---------------------------------------------------------------------------
+  // POST /users - Criar Usuário
+  // ---------------------------------------------------------------------------
   app.post('/users', {
     schema: {
-      tags: ['Team Management'],
-      summary: 'Adicionar novo membro ao time',
+      tags: ['Gestão de Equipe'],
+      summary: 'Adicionar Membro',
+      description: 'Convida um novo usuário para acessar o painel.',
       security: [{ bearerAuth: [] }],
       body: z.object({
-        name: z.string(),
-        email: z.string().email(),
-        password: z.string().min(6),
+        name: z.string().min(1, "Nome obrigatório"),
+        email: z.string().email("E-mail inválido"),
+        password: z.string().min(6, "Senha deve ter 6+ caracteres"),
         phone: z.string().optional(),
         role: z.enum(['ADMIN', 'AGENT']).default('AGENT')
-      })
+      }),
+      response: {
+        201: z.object({
+          id: z.string(),
+          email: z.string()
+        })
+      }
     }
   }, async (req, reply) => {
     const { tenantId } = req.user as { tenantId: string }
@@ -49,12 +71,15 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
     return reply.status(201).send(user)
   })
 
-  // EDITAR
+  // ---------------------------------------------------------------------------
+  // PUT /users/:id - Editar Usuário
+  // ---------------------------------------------------------------------------
   app.put('/users/:id', {
     schema: {
-      tags: ['Team Management'],
+      tags: ['Gestão de Equipe'],
+      summary: 'Editar Membro',
       security: [{ bearerAuth: [] }],
-      params: z.object({ id: z.string() }),
+      params: z.object({ id: z.string().uuid() }),
       body: z.object({
         name: z.string().optional(),
         role: z.enum(['ADMIN', 'AGENT']).optional(),
@@ -65,22 +90,27 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req, reply) => {
     const { tenantId } = req.user as { tenantId: string }
     const { id } = req.params
-    return userService.update(tenantId, id, req.body)
+    const updated = await userService.update(tenantId, id, req.body)
+    return reply.send(updated)
   })
 
-  // DELETAR
+  // ---------------------------------------------------------------------------
+  // DELETE /users/:id - Remover Usuário
+  // ---------------------------------------------------------------------------
   app.delete('/users/:id', {
     schema: {
-      tags: ['Team Management'],
+      tags: ['Gestão de Equipe'],
+      summary: 'Remover Membro',
       security: [{ bearerAuth: [] }],
-      params: z.object({ id: z.string() })
+      params: z.object({ id: z.string().uuid() })
     }
   }, async (req, reply) => {
-    const { tenantId, sub } = req.user as { tenantId: string, sub: string } // sub é o ID de quem tá logado
+    const { tenantId, sub } = req.user as { tenantId: string, sub: string }
     const { id } = req.params
     
+    // Regra de Negócio: Auto-deleção proibida
     if (id === sub) {
-      return reply.status(400).send({ error: "Você não pode deletar a si mesmo." })
+      throw Errors.BadRequest("Você não pode excluir sua própria conta.")
     }
 
     await userService.delete(tenantId, id)

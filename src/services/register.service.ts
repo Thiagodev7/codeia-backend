@@ -1,6 +1,7 @@
 import { hash } from 'bcryptjs'
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
+import { Errors } from '../lib/errors'
 
 interface RegisterInput {
   companyName: string
@@ -11,17 +12,26 @@ interface RegisterInput {
   password: string
 }
 
+/**
+ * Service de Registro (Onboarding)
+ * Responsável por criar a estrutura inicial de um novo Tenant (Empresa).
+ */
 export class RegisterService {
   async execute(data: RegisterInput) {
+    // 1. Validações de Unicidade
     const userExists = await prisma.user.findUnique({ where: { email: data.email } })
-    if (userExists) throw new Error('Email já cadastrado')
+    if (userExists) {
+      throw Errors.Conflict('Este e-mail já está cadastrado.')
+    }
 
     const tenantExists = await prisma.tenant.findUnique({ where: { document: data.document } })
-    if (tenantExists) throw new Error('Empresa já cadastrada')
+    if (tenantExists) {
+      throw Errors.Conflict('Esta empresa (CPF/CNPJ) já está cadastrada.')
+    }
 
     const passwordHash = await hash(data.password, 6)
 
-    // Transação para garantir integridade
+    // 2. Transação Atômica: Ou cria tudo (Empresa + Admin + Agente), ou nada.
     const result = await prisma.$transaction(async (tx) => {
       const newTenant = await tx.tenant.create({
         data: { name: data.companyName, document: data.document }
@@ -38,20 +48,20 @@ export class RegisterService {
         }
       })
       
-      // Cria um Agente Padrão para a empresa não começar vazia
+      // Criação do Agente Padrão (Bootstrap da IA)
       await tx.agent.create({
         data: {
           tenantId: newTenant.id,
-          name: "Assistente Padrão",
-          slug: "default",
-          instructions: "Você é um assistente útil e amigável."
+          name: "Assistente Principal",
+          slug: "atendente",
+          instructions: "Você é um assistente útil e amigável da empresa " + data.companyName + "."
         }
       })
 
       return { tenant: newTenant, user: newUser }
     })
 
-    logger.info(`Nova empresa registrada: ${result.tenant.name}`)
+    logger.info({ tenantId: result.tenant.id }, `🎉 Nova empresa registrada: ${result.tenant.name}`)
     return result
   }
 }
