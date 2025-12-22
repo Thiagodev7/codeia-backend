@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -21,11 +23,13 @@ model Tenant {
   users         User[]
   agents        Agent[]
   customers     Customer[]
-  waSession     WhatsAppSession?
+  
+  // CORREÇÃO 1: Mudou de 'waSession WhatsAppSession?' para um array (1:N)
+  waSessions    WhatsAppSession[] 
   
   messages      Message[]
   appointments  Appointment[]
-  services      Service[] // <--- ESTA LINHA ESTAVA FALTANDO!
+  services      Service[]
 
   @@map("tenants")
 }
@@ -60,6 +64,9 @@ model Agent {
   updatedAt     DateTime @updatedAt
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  
+  // CORREÇÃO 2: Adicionado o campo oposto da relação com as sessões
+  waSessions    WhatsAppSession[]
 
   @@unique([tenantId, slug])
   @@map("agents")
@@ -69,15 +76,21 @@ model Agent {
 
 model WhatsAppSession {
   id            String   @id @default(uuid())
-  tenantId      String   @unique
-  sessionName   String   @default("Default")
+  tenantId      String   
+  // (Sem @unique aqui, pois agora é 1:N)
+
+  sessionName   String   @default("Principal")
   status        String   @default("DISCONNECTED")
   config        Json?
+  
+  agentId       String?
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  
+  agent         Agent?   @relation(fields: [agentId], references: [id])
+
   @@map("whatsapp_sessions")
 }
 
@@ -115,10 +128,10 @@ model Message {
 model Service {
   id            String   @id @default(uuid())
   tenantId      String
-  name          String   // Ex: "Corte de Cabelo"
-  description   String?  // Ex: "Incluso lavagem"
-  price         Decimal  @default(0.0) // Ex: 50.00
-  duration      Int      // Duração em minutos (Ex: 30)
+  name          String   
+  description   String?  
+  price         Decimal  @default(0.0) 
+  duration      Int      
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
 
@@ -132,7 +145,7 @@ model Appointment {
   id            String   @id @default(uuid())
   tenantId      String
   customerId    String
-  serviceId     String?  // Opcional
+  serviceId     String?
   
   title         String
   description   String?

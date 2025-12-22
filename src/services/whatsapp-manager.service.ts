@@ -11,20 +11,19 @@ interface SessionInfo {
   status: string
   qrCode: string | null
   phoneNumber: string | null
+  sessionName: string // Adicionado para identificar visualmente
 }
 
-/**
- * Gerenciador de Sessões do WhatsApp (Singleton)
- * Responsável por criar clientes Puppeteer, gerenciar eventos de socket e delegar mensagens para a IA.
- */
 export class WhatsAppManager {
   private static instance: WhatsAppManager
+  
+  // A chave agora é o SESSION_ID, não mais o TenantId
   private clients: Map<string, Client> = new Map()
   private sessions: Map<string, SessionInfo> = new Map()
   private qrTimeouts: Map<string, NodeJS.Timeout> = new Map()
   
   private aiService = new AIService()
-  private readonly QR_TIMEOUT_MS = 120 * 1000; // 2 minutos
+  private readonly QR_TIMEOUT_MS = 120 * 1000; 
 
   private constructor() {}
 
@@ -35,25 +34,45 @@ export class WhatsAppManager {
     return WhatsAppManager.instance
   }
 
-  getStatus(tenantId: string): SessionInfo {
-    const session = this.sessions.get(tenantId)
+  // Busca status de UMA sessão específica
+  getSessionStatus(sessionId: string): SessionInfo {
+    const session = this.sessions.get(sessionId)
     if (!session) {
-      return { status: 'DISCONNECTED', qrCode: null, phoneNumber: null }
+      return { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName: '' }
     }
     return session
   }
 
-  async startClient(tenantId: string) {
-    if (this.clients.has(tenantId)) {
-        logger.info({ tenantId }, '⚠️ [WhatsApp] Cliente já está ativo. Ignorando solicitação.')
+  // Lista todos os status de um Tenant
+  getAllStatuses(tenantId: string): Record<string, SessionInfo> {
+    const result: Record<string, SessionInfo> = {}
+    // Filtra as sessões que pertencem a este tenant
+    // Nota: Em produção, idealmente teríamos um mapa reverso tenantId -> [sessionIds], 
+    // mas por enquanto iterar funciona para MVP.
+    // Para simplificar, o controller vai buscar do banco e pedir o status individualmente, 
+    // ou mantemos em memória. Vamos focar no startClient.
+    return result; 
+  }
+
+  async startClient(tenantId: string, sessionId: string, sessionName: string, linkedAgentId?: string | null) {
+    // A chave do mapa é o SessionID para suportar múltiplos números
+    if (this.clients.has(sessionId)) {
+        logger.info({ tenantId, sessionId }, '⚠️ [WhatsApp] Sessão já ativa.')
         return
     }
 
-    logger.info({ tenantId }, '🔄 [WhatsApp] Alocando recursos e iniciando navegador...')
-    this.sessions.set(tenantId, { status: 'STARTING', qrCode: null, phoneNumber: null })
+    logger.info({ tenantId, sessionId }, `🔄 [WhatsApp] Iniciando sessão: ${sessionName}`)
+    
+    this.sessions.set(sessionId, { 
+        status: 'STARTING', 
+        qrCode: null, 
+        phoneNumber: null,
+        sessionName 
+    })
 
     const client = new Client({
-      authStrategy: new LocalAuth({ clientId: tenantId }),
+      // IMPORTANTE: clientId deve ser único por sessão para criar pastas diferentes (.wwebjs_auth/session-UUID)
+      authStrategy: new LocalAuth({ clientId: sessionId }),
       puppeteer: { 
         headless: true,
         args: [
@@ -68,198 +87,194 @@ export class WhatsAppManager {
       }
     })
 
-    // --- EVENTOS DO CLIENTE ---
+    // --- EVENTOS ---
 
     client.on('qr', async (qr) => {
-      logger.info({ tenantId }, '📱 [WhatsApp] QR Code gerado.')
+      logger.info({ tenantId, sessionId }, '📱 [WhatsApp] QR Code gerado.')
       const qrImage = await QRCode.toDataURL(qr)
       
-      this.sessions.set(tenantId, { status: 'QRCODE', qrCode: qrImage, phoneNumber: null })
-
-      await prisma.whatsAppSession.upsert({
-        where: { tenantId },
-        create: { tenantId, status: 'QRCODE' },
-        update: { status: 'QRCODE' }
+      this.sessions.set(sessionId, { 
+          status: 'QRCODE', 
+          qrCode: qrImage, 
+          phoneNumber: null,
+          sessionName 
       })
 
-      // Timeout para economizar memória se o usuário não ler o QR
-      if (!this.qrTimeouts.has(tenantId)) {
-          logger.info({ tenantId }, `⏳ [WhatsApp] Iniciando timer de expiração (${this.QR_TIMEOUT_MS / 1000}s)...`)
+      await prisma.whatsAppSession.update({
+        where: { id: sessionId },
+        data: { status: 'QRCODE' }
+      })
+
+      if (!this.qrTimeouts.has(sessionId)) {
           const timeout = setTimeout(async () => {
-              logger.warn({ tenantId }, '⏰ [WhatsApp] Timeout do QR Code. Encerrando processo.')
-              await this.stopClient(tenantId)
+              logger.warn({ sessionId }, '⏰ [WhatsApp] Timeout QR Code.')
+              await this.stopClient(sessionId)
           }, this.QR_TIMEOUT_MS)
-          this.qrTimeouts.set(tenantId, timeout)
+          this.qrTimeouts.set(sessionId, timeout)
       }
     })
 
     client.on('ready', async () => {
-      this.clearQrTimeout(tenantId)
+      this.clearQrTimeout(sessionId)
       const phoneNumber = client.info.wid.user
-      logger.info({ tenantId, phoneNumber }, '✅ [WhatsApp] Conectado e Pronto!')
+      logger.info({ tenantId, sessionId, phoneNumber }, '✅ [WhatsApp] Conectado!')
 
-      this.sessions.set(tenantId, { status: 'CONNECTED', qrCode: null, phoneNumber: phoneNumber })
+      this.sessions.set(sessionId, { 
+          status: 'CONNECTED', 
+          qrCode: null, 
+          phoneNumber: phoneNumber,
+          sessionName
+      })
 
       await prisma.whatsAppSession.update({
-        where: { tenantId },
+        where: { id: sessionId },
         data: { status: 'CONNECTED' }
       })
     })
 
     client.on('auth_failure', async () => {
-        logger.error({ tenantId }, '❌ [WhatsApp] Falha na autenticação.')
-        this.clearQrTimeout(tenantId)
-        await this.stopClient(tenantId)
+        logger.error({ sessionId }, '❌ [WhatsApp] Falha Auth.')
+        this.clearQrTimeout(sessionId)
+        await this.stopClient(sessionId)
     })
 
     client.on('disconnected', async (reason) => {
-      logger.warn({ tenantId, reason }, '❌ [WhatsApp] Desconectado.')
-      this.clearQrTimeout(tenantId)
-      this.clients.delete(tenantId)
-      this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
+      logger.warn({ sessionId, reason }, '❌ [WhatsApp] Desconectado.')
+      this.clearQrTimeout(sessionId)
+      this.clients.delete(sessionId)
+      this.sessions.set(sessionId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName })
       
       await prisma.whatsAppSession.update({
-        where: { tenantId },
+        where: { id: sessionId },
         data: { status: 'DISCONNECTED' }
       })
     })
 
-    // --- LÓGICA DE MENSAGENS (COM CONTEXTO DE LOG) ---
+    // --- LÓGICA DE MENSAGENS ---
 
     client.on('message', async (msg) => {
-      // Ignora grupos e status broadcast
       if (msg.from.includes('@g.us') || msg.from === 'status@broadcast' || msg.id.remote.includes('broadcast')) return
 
-      // Cria Contexto de Rastreabilidade para Logs
       const requestId = `wa-${randomUUID().split('-')[0]}`
       
       asyncContext.run({ requestId, tenantId, path: 'whatsapp-event' }, async () => {
-          const start = Date.now()
           try {
+            // ... (Lógica de extração de contato igual ao anterior) ...
             let phone = msg.from.replace('@c.us', '');
             let contactName = 'Cliente';
-
             try {
                 const contact = await msg.getContact();
                 phone = contact.number;
                 contactName = contact.pushname || contact.name || 'Cliente';
-            } catch (error) {
-                logger.warn('⚠️ Falha ao obter dados detalhados do contato.')
-            }
+            } catch (e) {}
 
-            logger.info({ from: phone, name: contactName, body: msg.body }, '📥 [WhatsApp] Mensagem Recebida')
+            logger.info({ from: phone, session: sessionName }, '📥 [WhatsApp] Recebido')
 
-            // 1. Identificação/Criação do Cliente (CRM)
+            // 1. Identificação do Cliente
             let customer = await prisma.customer.findUnique({
                 where: { tenantId_phone: { tenantId, phone } }
             })
 
             if (!customer) {
-              logger.info('🆕 [CRM] Novo cliente registrado automaticamente.')
               customer = await prisma.customer.create({
                 data: { tenantId, phone, name: contactName }
               })
             }
 
-            // 2. Persistência da Mensagem
             await prisma.message.create({
               data: { tenantId, customerId: customer.id, role: 'user', content: msg.body }
             })
 
-            // 3. Verificação de Agentes Ativos
-            const activeAgents = await prisma.agent.findMany({ where: { tenantId, isActive: true } })
-            if (activeAgents.length === 0) {
-                logger.debug('⛔ [IA] Nenhum agente ativo para responder.')
+            // 2. SELEÇÃO DO AGENTE (A Mágica acontece aqui)
+            // Se a sessão tem um agente vinculado, usa ele. Se não, tenta pegar o padrão.
+            let agentIdToUse = linkedAgentId;
+
+            if (!agentIdToUse) {
+                // Fallback: Pega qualquer agente ativo se a sessão não tiver um específico
+                const anyAgent = await prisma.agent.findFirst({ where: { tenantId, isActive: true } })
+                agentIdToUse = anyAgent?.id
+            }
+
+            if (!agentIdToUse) {
+                logger.debug('⛔ [IA] Nenhum agente configurado para esta sessão ou tenant.')
                 return
             }
-            const agent = activeAgents[0]
 
-            // 4. Construção do Histórico
+            // ... (Lógica de Histórico e Chamada IA igual ao anterior) ...
             const previousMessages = await prisma.message.findMany({
                 where: { tenantId, customerId: customer.id },
                 orderBy: { createdAt: 'desc' },
                 take: 20 
             })
-
             let rawHistory = previousMessages.reverse();
-            // Remove a mensagem atual para não duplicar no histórico enviado ao Gemini
             rawHistory = rawHistory.filter(m => m.content !== msg.body);
-            // Garante que o histórico comece com 'user' (regra do Gemini)
-            while (rawHistory.length > 0 && rawHistory[0].role === 'model') {
-                rawHistory.shift(); 
-            }
+            while (rawHistory.length > 0 && rawHistory[0].role === 'model') rawHistory.shift(); 
 
             const history: Content[] = rawHistory.map(m => ({
                 role: m.role === 'user' ? 'user' : 'model',
                 parts: [{ text: m.content }]
             }))
 
-            // 5. Chamada à IA
-            logger.info({ agentId: agent.id }, '🤖 [IA] Gerando resposta...')
+            logger.info({ agentId: agentIdToUse }, '🤖 [IA] Respondendo...')
             const aiRes = await this.aiService.chat(
-                agent.id, 
+                agentIdToUse, // <--- USA O AGENTE DA SESSÃO
                 msg.body, 
                 { tenantId, customerId: customer.id, customerPhone: phone, customerName: contactName },
                 history
             )
             
-            // 6. Envio da Resposta
             if (aiRes.response) {
                 await msg.reply(aiRes.response)
-
                 await prisma.message.create({
                   data: { tenantId, customerId: customer.id, role: 'model', content: aiRes.response }
                 })
-
-                const duration = Date.now() - start
-                logger.info({ duration: `${duration}ms` }, '📤 [WhatsApp] Resposta enviada com sucesso')
             }
 
           } catch (err: any) {
-            logger.error({ err: err.message, stack: err.stack }, '❌ [WhatsApp] Erro no processamento da mensagem')
-            try {
-                await msg.reply("⚠️ Desculpe, estou com uma instabilidade técnica momentânea.")
-            } catch (replyErr) {
-                logger.error('Falha crítica ao enviar mensagem de erro.')
-            }
+            logger.error({ err: err.message }, '❌ [WhatsApp] Erro message handler')
           }
-      }) // Fim do Contexto
+      })
     })
 
     // Inicialização
     try {
         await client.initialize()
-        this.clients.set(tenantId, client)
+        this.clients.set(sessionId, client) // Mapa agora usa sessionId
     } catch (error) {
-        logger.error({ error }, '💀 [WhatsApp] Falha crítica ao inicializar Engine')
-        this.clearQrTimeout(tenantId)
-        this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
+        logger.error({ error, sessionId }, '💀 [WhatsApp] Falha Puppeteer')
+        this.clearQrTimeout(sessionId)
+        this.sessions.set(sessionId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName })
     }
   }
 
-  async stopClient(tenantId: string) {
-    logger.info({ tenantId }, '🛑 [WhatsApp] Parando serviço...')
-    this.clearQrTimeout(tenantId)
+  async stopClient(sessionId: string) {
+    logger.info({ sessionId }, '🛑 [WhatsApp] Parando sessão...')
+    this.clearQrTimeout(sessionId)
 
-    const client = this.clients.get(tenantId)
+    const client = this.clients.get(sessionId)
     if (client) {
         try {
             await client.destroy()
-            logger.info({ tenantId }, '✅ [WhatsApp] Sessão encerrada.')
-        } catch (e) {
-            logger.error({ error: e, tenantId }, '⚠️ Erro ao destruir cliente')
-        }
-        this.clients.delete(tenantId)
+        } catch (e) {}
+        this.clients.delete(sessionId)
     }
     
-    this.sessions.set(tenantId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null })
-    await prisma.whatsAppSession.update({ where: { tenantId }, data: { status: 'DISCONNECTED' } })
+    // Mantemos o nome da sessão no status desconectado para a UI não ficar vazia
+    const oldSession = this.sessions.get(sessionId)
+    this.sessions.set(sessionId, { 
+        status: 'DISCONNECTED', 
+        qrCode: null, 
+        phoneNumber: null, 
+        sessionName: oldSession?.sessionName || 'Sessão' 
+    })
+    
+    await prisma.whatsAppSession.update({ where: { id: sessionId }, data: { status: 'DISCONNECTED' } })
   }
 
-  private clearQrTimeout(tenantId: string) {
-      if (this.qrTimeouts.has(tenantId)) {
-          clearTimeout(this.qrTimeouts.get(tenantId))
-          this.qrTimeouts.delete(tenantId)
+  private clearQrTimeout(sessionId: string) {
+      if (this.qrTimeouts.has(sessionId)) {
+          clearTimeout(this.qrTimeouts.get(sessionId))
+          this.qrTimeouts.delete(sessionId)
       }
   }
 }

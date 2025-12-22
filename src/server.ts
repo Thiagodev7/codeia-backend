@@ -86,19 +86,25 @@ app.register(appointmentRoutes) // <--- REGISTRANDO A ROTA DE AGENDA
 // --- FUNÇÃO DE RESTAURAÇÃO DE SESSÕES (WHATSAPP) ---
 async function restoreSessions() {
   try {
-    const sessions = await prisma.whatsAppSession.findMany({ where: { status: 'CONNECTED' } })
+    const sessions = await prisma.whatsAppSession.findMany({ 
+        where: { status: 'CONNECTED' } // Ou traga todas e deixe o manager decidir
+    })
     const manager = WhatsAppManager.getInstance()
     
     if(sessions.length > 0) {
       logger.info(`🔄 Restaurando ${sessions.length} sessões de WhatsApp...`)
       for (const session of sessions) {
-        // O manager iniciará e usará o logger inteligente.
-        // O contexto será "sys-background" pois não há requisição HTTP aqui.
-        manager.startClient(session.tenantId)
+        // Passamos ID da sessão, Nome e Agente Vinculado
+        manager.startClient(
+            session.tenantId, 
+            session.id, 
+            session.sessionName, 
+            session.agentId
+        )
       }
     }
   } catch (error) {
-    logger.error({ error }, '❌ Erro crítico ao restaurar sessões (Banco desconectado?)')
+    logger.error({ error }, '❌ Erro crítico ao restaurar sessões')
   }
 }
 
