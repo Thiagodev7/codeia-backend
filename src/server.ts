@@ -3,8 +3,6 @@ import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
-import fastifyStatic from '@fastify/static'
-import path from 'node:path'
 import { serializerCompiler, validatorCompiler, jsonSchemaTransform } from 'fastify-type-provider-zod'
 
 // --- ROTAS DE NEGÓCIO ---
@@ -15,14 +13,14 @@ import { tenantRoutes } from './routes/tenant.routes'
 import { aiRoutes } from './routes/ai.routes'
 import { serviceRoutes } from './routes/service.routes'
 import { crmRoutes } from './routes/crm.routes'
-import { appointmentRoutes } from './routes/appointment.routes' // <--- NOVA ROTA IMPORTADA
+import { appointmentRoutes } from './routes/appointment.routes'
 
 // --- INFRAESTRUTURA & SERVICES ---
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
 import { WhatsAppManager } from './services/whatsapp-manager.service'
 
-// --- PLUGINS DE ARQUITETURA (OBSERVABILIDADE E PADRONIZAÇÃO) ---
+// --- PLUGINS DE ARQUITETURA ---
 import { contextPlugin } from './plugins/context.plugin'
 import { errorHandlerPlugin } from './plugins/error-handler.plugin'
 
@@ -44,34 +42,23 @@ app.register(fastifySwagger, {
 
 app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
-// --- PLUGINS GERAIS (A ORDEM IMPORTA MUITO!) ---
+// --- PLUGINS GERAIS ---
 
-// 1. Contexto (AsyncLocalStorage): 
-// Cria o "request id" e o contexto de log para toda a requisição.
+// 1. Contexto & Logs
 app.register(contextPlugin)
 
-// 2. Error Handler Global:
-// Intercepta qualquer erro (Zod, Prisma, AppError) e retorna JSON bonito.
+// 2. Tratamento de Erros Global
 app.register(errorHandlerPlugin)
 
-// 3. Segurança e CORS
+// 3. Segurança (CORS)
+// Isso é vital agora que o front roda em outra porta (ex: 5173)
 app.register(cors, { 
-  origin: true // Em produção, altere para o domínio do seu frontend
+  origin: true // Em produção, troque 'true' pela URL do seu frontend (ex: https://app.codeia.com)
 })
 
 app.register(jwt, { 
   secret: process.env.JWT_SECRET || 'dev-secret' 
 })
-
-// --- FRONTEND (Arquivos Estáticos) ---
-const publicPath = path.join(process.cwd(), 'public')
-
-app.register(fastifyStatic, {
-  root: publicPath,
-  prefix: '/', 
-})
-
-logger.info(`📂 Servindo arquivos estáticos de: ${publicPath}`)
 
 // --- REGISTRO DAS ROTAS DA API ---
 app.register(authRoutes)
@@ -81,20 +68,19 @@ app.register(tenantRoutes)
 app.register(aiRoutes)
 app.register(serviceRoutes)
 app.register(crmRoutes)
-app.register(appointmentRoutes) // <--- REGISTRANDO A ROTA DE AGENDA
+app.register(appointmentRoutes)
 
 // --- FUNÇÃO DE RESTAURAÇÃO DE SESSÕES (WHATSAPP) ---
 async function restoreSessions() {
   try {
     const sessions = await prisma.whatsAppSession.findMany({ 
-        where: { status: 'CONNECTED' } // Ou traga todas e deixe o manager decidir
+        where: { status: 'CONNECTED' } 
     })
     const manager = WhatsAppManager.getInstance()
     
     if(sessions.length > 0) {
       logger.info(`🔄 Restaurando ${sessions.length} sessões de WhatsApp...`)
       for (const session of sessions) {
-        // Passamos ID da sessão, Nome e Agente Vinculado
         manager.startClient(
             session.tenantId, 
             session.id, 
@@ -110,7 +96,7 @@ async function restoreSessions() {
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen({ port: 3333, host: '0.0.0.0' }).then(async (address) => {
-  logger.info(`🚀 CodeIA Backend rodando em ${address}`)
+  logger.info(`🚀 CodeIA Backend (API Pura) rodando em ${address}`)
   logger.info(`📑 Documentação disponível em ${address}/docs`)
   
   await restoreSessions()
