@@ -1,4 +1,8 @@
-import { Client, LocalAuth } from 'whatsapp-web.js'
+import makeWASocket, { 
+    DisconnectReason, 
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore
+} from '@whiskeysockets/baileys'
 import * as QRCode from 'qrcode'
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
@@ -6,6 +10,7 @@ import { AIService } from './ai.service'
 import { Content } from '@google/generative-ai'
 import { asyncContext } from '../lib/async-context'
 import { randomUUID } from 'node:crypto'
+import { usePrismaAuthState } from '../lib/baileys-prisma-auth'
 
 interface SessionInfo {
   status: string
@@ -17,12 +22,10 @@ interface SessionInfo {
 export class WhatsAppManager {
   private static instance: WhatsAppManager
   
-  private clients: Map<string, Client> = new Map()
+  private sockets: Map<string, any> = new Map()
   private sessions: Map<string, SessionInfo> = new Map()
-  private qrTimeouts: Map<string, NodeJS.Timeout> = new Map()
   
   private aiService = new AIService()
-  private readonly QR_TIMEOUT_MS = 120 * 1000; 
 
   private constructor() {}
 
@@ -34,259 +37,172 @@ export class WhatsAppManager {
   }
 
   getSessionStatus(sessionId: string): SessionInfo {
-    const session = this.sessions.get(sessionId)
-    if (!session) {
-      return { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName: '' }
-    }
-    return session
+    return this.sessions.get(sessionId) || { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName: '' }
   }
 
   async startClient(tenantId: string, sessionId: string, sessionName: string, linkedAgentId?: string | null) {
-    // Evita duplicidade se já estiver rodando
-    if (this.clients.has(sessionId)) {
-        logger.info({ tenantId, sessionId }, '⚠️ [WhatsApp] Sessão já ativa.')
-        return
-    }
+    if (this.sockets.has(sessionId)) return
 
-    logger.info({ tenantId, sessionId }, `🔄 [WhatsApp] Iniciando sessão: ${sessionName}`)
-    
-    // Marca como iniciando na memória
-    this.sessions.set(sessionId, { 
-        status: 'STARTING', 
-        qrCode: null, 
-        phoneNumber: null,
-        sessionName 
+    // Verifica se a sessão ainda existe no banco para evitar Zumbis
+    const sessionExists = await prisma.whatsAppSession.findUnique({ where: { id: sessionId } })
+    if (!sessionExists) return
+
+    logger.info({ tenantId, sessionId }, `🔄 [Baileys] Iniciando sessão: ${sessionName}`)
+    this.sessions.set(sessionId, { status: 'STARTING', qrCode: null, phoneNumber: null, sessionName })
+
+    const { state, saveCreds } = await usePrismaAuthState(prisma, sessionId)
+    const { version } = await fetchLatestBaileysVersion()
+
+    const sock = makeWASocket({
+        version,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, logger as any),
+        },
+        printQRInTerminal: false,
+        logger: logger as any, 
+        browser: ["CodeIA", "Chrome", "1.0.0"],
+        syncFullHistory: false 
     })
 
-    const client = new Client({
-      authStrategy: new LocalAuth({ clientId: sessionId }),
-      puppeteer: { 
-        headless: true,
-        args: [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-        ] 
-      }
-    })
+    this.sockets.set(sessionId, sock)
 
-    // Adicionamos o cliente ao mapa ANTES de inicializar para podermos matá-lo se a sessão for deletada durante o boot
-    this.clients.set(sessionId, client)
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update
 
-    // --- EVENTOS ---
-
-    client.on('qr', async (qr) => {
-      logger.info({ tenantId, sessionId }, '📱 [WhatsApp] QR Code gerado.')
-      const qrImage = await QRCode.toDataURL(qr)
-      
-      this.sessions.set(sessionId, { 
-          status: 'QRCODE', 
-          qrCode: qrImage, 
-          phoneNumber: null,
-          sessionName 
-      })
-
-      try {
-        await prisma.whatsAppSession.update({
-          where: { id: sessionId },
-          data: { status: 'QRCODE' }
-        })
-      } catch (error: any) {
-        // Se o registro não existe mais (foi deletado), matamos o processo
-        if (error.code === 'P2025') {
-            logger.warn({ sessionId }, '⚠️ Sessão não encontrada no banco (Deletada?). Encerrando cliente.')
-            await this.stopClient(sessionId)
-            return
-        }
-        logger.error({ error }, '❌ Erro ao atualizar QR Code no banco')
-      }
-
-      // Timeout do QR Code
-      if (!this.qrTimeouts.has(sessionId)) {
-          const timeout = setTimeout(async () => {
-              logger.warn({ sessionId }, '⏰ [WhatsApp] Timeout QR Code.')
-              await this.stopClient(sessionId)
-          }, this.QR_TIMEOUT_MS)
-          this.qrTimeouts.set(sessionId, timeout)
-      }
-    })
-
-    client.on('ready', async () => {
-      this.clearQrTimeout(sessionId)
-      const phoneNumber = client.info.wid.user
-      logger.info({ tenantId, sessionId, phoneNumber }, '✅ [WhatsApp] Conectado!')
-
-      this.sessions.set(sessionId, { 
-          status: 'CONNECTED', 
-          qrCode: null, 
-          phoneNumber: phoneNumber,
-          sessionName
-      })
-
-      try {
-        await prisma.whatsAppSession.update({
-            where: { id: sessionId },
-            data: { status: 'CONNECTED' }
-        })
-      } catch (error: any) {
-        if (error.code === 'P2025') {
-            await this.stopClient(sessionId)
-        }
-      }
-    })
-
-    client.on('auth_failure', async () => {
-        logger.error({ sessionId }, '❌ [WhatsApp] Falha Auth.')
-        this.clearQrTimeout(sessionId)
-        await this.stopClient(sessionId)
-    })
-
-    client.on('disconnected', async (reason) => {
-      logger.warn({ sessionId, reason }, '❌ [WhatsApp] Desconectado.')
-      this.clearQrTimeout(sessionId)
-      
-      // Remove do mapa de clientes ativos
-      this.clients.delete(sessionId)
-      
-      this.sessions.set(sessionId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName })
-      
-      try {
-        await prisma.whatsAppSession.update({
-            where: { id: sessionId },
-            data: { status: 'DISCONNECTED' }
-        })
-      } catch (error: any) {
-         // Ignora erro se já foi deletado
-      }
-    })
-
-    // --- LÓGICA DE MENSAGENS ---
-
-    client.on('message', async (msg) => {
-      if (msg.from.includes('@g.us') || msg.from === 'status@broadcast' || msg.id.remote.includes('broadcast')) return
-
-      const requestId = `wa-${randomUUID().split('-')[0]}`
-      
-      asyncContext.run({ requestId, tenantId, path: 'whatsapp-event' }, async () => {
-          try {
-            let phone = msg.from.replace('@c.us', '');
-            let contactName = 'Cliente';
-            try {
-                const contact = await msg.getContact();
-                phone = contact.number;
-                contactName = contact.pushname || contact.name || 'Cliente';
-            } catch (e) {}
-
-            logger.info({ from: phone, session: sessionName }, '📥 [WhatsApp] Recebido')
-
-            let customer = await prisma.customer.findUnique({
-                where: { tenantId_phone: { tenantId, phone } }
-            })
-
-            if (!customer) {
-              customer = await prisma.customer.create({
-                data: { tenantId, phone, name: contactName }
-              })
-            }
-
-            await prisma.message.create({
-              data: { tenantId, customerId: customer.id, role: 'user', content: msg.body }
-            })
-
-            // Roteamento de Agente
-            let agentIdToUse = linkedAgentId;
-            if (!agentIdToUse) {
-                const anyAgent = await prisma.agent.findFirst({ where: { tenantId, isActive: true } })
-                agentIdToUse = anyAgent?.id
-            }
-
-            if (!agentIdToUse) return
-
-            const previousMessages = await prisma.message.findMany({
-                where: { tenantId, customerId: customer.id },
-                orderBy: { createdAt: 'desc' },
-                take: 20 
-            })
-            let rawHistory = previousMessages.reverse();
-            rawHistory = rawHistory.filter(m => m.content !== msg.body);
-            while (rawHistory.length > 0 && rawHistory[0].role === 'model') rawHistory.shift(); 
-
-            const history: Content[] = rawHistory.map(m => ({
-                role: m.role === 'user' ? 'user' : 'model',
-                parts: [{ text: m.content }]
-            }))
-
-            logger.info({ agentId: agentIdToUse }, '🤖 [IA] Respondendo...')
-            const aiRes = await this.aiService.chat(
-                agentIdToUse, 
-                msg.body, 
-                { tenantId, customerId: customer.id, customerPhone: phone, customerName: contactName },
-                history
-            )
+        if (qr) {
+            logger.info({ sessionId }, '📱 [Baileys] QR Code gerado')
+            const qrImage = await QRCode.toDataURL(qr)
+            this.sessions.set(sessionId, { status: 'QRCODE', qrCode: qrImage, phoneNumber: null, sessionName })
             
-            if (aiRes.response) {
-                await msg.reply(aiRes.response)
-                await prisma.message.create({
-                  data: { tenantId, customerId: customer.id, role: 'model', content: aiRes.response }
-                })
-            }
+            prisma.whatsAppSession.update({ where: { id: sessionId }, data: { status: 'QRCODE' } }).catch(() => {})
+        }
 
-          } catch (err: any) {
-            logger.error({ err: err.message }, '❌ [WhatsApp] Erro message handler')
-          }
-      })
+        if (connection === 'open') {
+            const user = sock.user?.id ? sock.user.id.split(':')[0] : 'Unknown'
+            logger.info({ sessionId, user }, '✅ [Baileys] Conectado!')
+            
+            this.sessions.set(sessionId, { status: 'CONNECTED', qrCode: null, phoneNumber: user, sessionName })
+            prisma.whatsAppSession.update({ where: { id: sessionId }, data: { status: 'CONNECTED' } }).catch(() => {})
+        }
+
+        if (connection === 'close') {
+            // --- CORREÇÃO DE PARADA MANUAL ---
+            // Se o socket não está mais no mapa 'this.sockets', foi removido por stopClient().
+            // Então é uma parada intencional, IGNORAMOS o reconnect.
+            if (!this.sockets.has(sessionId)) {
+                logger.info({ sessionId }, '🛑 [Baileys] Conexão encerrada manualmente.')
+                return
+            }
+            // ----------------------------------
+
+            const statusCode = (lastDisconnect?.error as any)?.output?.statusCode
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+            
+            logger.warn({ sessionId, statusCode }, `❌ [Baileys] Desconectado. Reconectar: ${shouldReconnect}`)
+
+            // Limpa socket antigo
+            this.sockets.delete(sessionId)
+
+            if (shouldReconnect) {
+                setTimeout(() => this.startClient(tenantId, sessionId, sessionName, linkedAgentId), 2000)
+            } else {
+                this.sessions.set(sessionId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName })
+                prisma.whatsAppSession.update({ where: { id: sessionId }, data: { status: 'DISCONNECTED' } }).catch(() => {})
+            }
+        }
     })
 
-    // Inicialização
-    try {
-        await client.initialize()
-    } catch (error) {
-        logger.error({ error, sessionId }, '💀 [WhatsApp] Falha Puppeteer')
-        this.clearQrTimeout(sessionId)
-        this.sessions.set(sessionId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName })
-        this.clients.delete(sessionId) // Limpa se falhar
-    }
+    sock.ev.on('creds.update', saveCreds)
+
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return
+
+        for (const msg of messages) {
+            if (!msg.message || msg.key.fromMe) continue
+
+            const remoteJid = msg.key.remoteJid!
+            // Ignora grupos e status (@g.us, status@broadcast)
+            if (remoteJid.includes('@g.us') || remoteJid === 'status@broadcast') continue
+
+            const phone = remoteJid.split('@')[0]
+            const name = msg.pushName || 'Cliente'
+            const text = msg.message.conversation || msg.message.extendedTextMessage?.text
+            
+            if (!text) continue
+
+            asyncContext.run({ requestId: `wa-${randomUUID()}`, tenantId, path: 'whatsapp-event' }, async () => {
+                try {
+                    let customer = await prisma.customer.findUnique({
+                        where: { tenantId_phone: { tenantId, phone } }
+                    })
+                    if (!customer) {
+                        customer = await prisma.customer.create({ data: { tenantId, phone, name } })
+                    }
+
+                    await prisma.message.create({
+                        data: { tenantId, customerId: customer.id, role: 'user', content: text }
+                    })
+
+                    let agentIdToUse = linkedAgentId
+                    if (!agentIdToUse) {
+                        const anyAgent = await prisma.agent.findFirst({ where: { tenantId, isActive: true } })
+                        agentIdToUse = anyAgent?.id
+                    }
+
+                    if (!agentIdToUse) return
+
+                    const historyRaw = await prisma.message.findMany({
+                        where: { tenantId, customerId: customer.id },
+                        orderBy: { createdAt: 'desc' },
+                        take: 10
+                    })
+                    const history = historyRaw.reverse().filter(m => m.content !== text).map(m => ({
+                        role: m.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: m.content }]
+                    })) as Content[]
+
+                    const aiRes = await this.aiService.chat(
+                        agentIdToUse, 
+                        text, 
+                        { tenantId, customerId: customer.id, customerPhone: phone, customerName: name },
+                        history
+                    )
+
+                    if (aiRes.response) {
+                        await sock.sendMessage(remoteJid, { text: aiRes.response })
+                        
+                        await prisma.message.create({
+                            data: { tenantId, customerId: customer.id, role: 'model', content: aiRes.response }
+                        })
+                    }
+                } catch (error) {
+                    logger.error({ error }, 'Erro ao processar mensagem Baileys')
+                }
+            })
+        }
+    })
   }
 
   async stopClient(sessionId: string) {
-    logger.info({ sessionId }, '🛑 [WhatsApp] Parando sessão...')
-    this.clearQrTimeout(sessionId)
-
-    const client = this.clients.get(sessionId)
-    if (client) {
-        try {
-            await client.destroy()
-        } catch (e) {
-            logger.warn({ sessionId }, 'Erro ao destruir cliente (pode já estar fechado).')
-        }
-        this.clients.delete(sessionId)
+    const sock = this.sockets.get(sessionId)
+    if (sock) {
+        logger.info({ sessionId }, '🛑 Solicitando parada da sessão...')
+        
+        // 1. PRIMEIRO removemos da lista de ativos. 
+        // Isso impede que o listener 'close' tente reconectar.
+        this.sockets.delete(sessionId)
+        
+        // 2. DEPOIS encerramos a conexão
+        sock.end(undefined)
+        
+        // 3. Atualizamos o estado
+        this.sessions.set(sessionId, { status: 'DISCONNECTED', qrCode: null, phoneNumber: null, sessionName: '' })
+        
+        await prisma.whatsAppSession.update({ 
+            where: { id: sessionId }, 
+            data: { status: 'DISCONNECTED' } 
+        }).catch(() => {})
     }
-    
-    // Atualiza memória
-    const oldSession = this.sessions.get(sessionId)
-    this.sessions.set(sessionId, { 
-        status: 'DISCONNECTED', 
-        qrCode: null, 
-        phoneNumber: null, 
-        sessionName: oldSession?.sessionName || 'Sessão' 
-    })
-    
-    // Atualiza banco (com try/catch caso tenha sido deletado)
-    try {
-        await prisma.whatsAppSession.update({ where: { id: sessionId }, data: { status: 'DISCONNECTED' } })
-    } catch (e) {
-        // Ignora erro P2025 aqui, pois se foi deletado, tudo bem.
-    }
-  }
-
-  private clearQrTimeout(sessionId: string) {
-      if (this.qrTimeouts.has(sessionId)) {
-          clearTimeout(this.qrTimeouts.get(sessionId))
-          this.qrTimeouts.delete(sessionId)
-      }
   }
 }

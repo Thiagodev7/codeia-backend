@@ -72,26 +72,38 @@ model Agent {
   @@map("agents")
 }
 
-// --- MODULO WHATSAPP & CRM ---
+// --- MÓDULO WHATSAPP (BAILEYS ENGINE) ---
 
 model WhatsAppSession {
   id            String   @id @default(uuid())
-  tenantId      String   
-  // (Sem @unique aqui, pois agora é 1:N)
-
+  tenantId      String
   sessionName   String   @default("Principal")
   status        String   @default("DISCONNECTED")
-  config        Json?
   
+  // Relação com as chaves de autenticação (Segurança)
+  authKeys      WhatsAppAuthKey[]
+
   agentId       String?
+  agent         Agent?   @relation(fields: [agentId], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  agent         Agent?   @relation(fields: [agentId], references: [id])
-
   @@map("whatsapp_sessions")
+}
+
+model WhatsAppAuthKey {
+  id          String   @id @default(uuid())
+  sessionId   String
+  keyId       String   // Identificador da chave (ex: "creds", "sender-key-xyz")
+  type        String   // Categoria da chave
+  value       Json     // Valor criptografado (Buffer serializado)
+  
+  session     WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, keyId]) // Garante que não duplicamos chaves
+  @@map("whatsapp_auth_keys")
 }
 
 model Customer {
