@@ -14,6 +14,7 @@ import { aiRoutes } from './routes/ai.routes'
 import { serviceRoutes } from './routes/service.routes'
 import { crmRoutes } from './routes/crm.routes'
 import { appointmentRoutes } from './routes/appointment.routes'
+import { settingsRoutes } from './routes/settings.routes' // <--- IMPORTAÇÃO NOVA
 
 // --- INFRAESTRUTURA & SERVICES ---
 import { logger } from './lib/logger'
@@ -51,9 +52,8 @@ app.register(contextPlugin)
 app.register(errorHandlerPlugin)
 
 // 3. Segurança (CORS)
-// Isso é vital agora que o front roda em outra porta (ex: 5173)
 app.register(cors, { 
-  origin: true // Em produção, troque 'true' pela URL do seu frontend (ex: https://app.codeia.com)
+  origin: true 
 })
 
 app.register(jwt, { 
@@ -69,6 +69,7 @@ app.register(aiRoutes)
 app.register(serviceRoutes)
 app.register(crmRoutes)
 app.register(appointmentRoutes)
+app.register(settingsRoutes) // <--- REGISTRO NOVO
 
 // --- FUNÇÃO DE RESTAURAÇÃO DE SESSÕES (WHATSAPP) ---
 async function restoreSessions() {

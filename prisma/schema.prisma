@@ -20,16 +20,17 @@ model Tenant {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Relacionamentos
   users         User[]
   agents        Agent[]
   customers     Customer[]
-  
-  // CORREÇÃO 1: Mudou de 'waSession WhatsAppSession?' para um array (1:N)
-  waSessions    WhatsAppSession[] 
-  
+  waSessions    WhatsAppSession[]
   messages      Message[]
   appointments  Appointment[]
   services      Service[]
+
+  // [NOVO] Configurações da Empresa (1:1)
+  settings      TenantSettings?
 
   @@map("tenants")
 }
@@ -41,31 +42,32 @@ model User {
   email         String   @unique
   phone         String?
   passwordHash  String
-  role          String   @default("ADMIN")
+  role          String   @default("ADMIN") // 'ADMIN' ou 'AGENT'
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
 
+  // [NOVO] Preferências do Usuário (1:1)
+  settings      UserSettings?
+
   @@map("users")
 }
 
-// --- MODULO DE IA ---
+// --- MÓDULO DE IA ---
 
 model Agent {
   id            String   @id @default(uuid())
   tenantId      String
   name          String
   slug          String
-  model         String   @default("gemini-1.5-flash")
+  model         String   @default("gemini-2.0-flash-lite")
   instructions  String   @db.Text
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  
-  // CORREÇÃO 2: Adicionado o campo oposto da relação com as sessões
   waSessions    WhatsAppSession[]
 
   @@unique([tenantId, slug])
@@ -80,7 +82,6 @@ model WhatsAppSession {
   sessionName   String   @default("Principal")
   status        String   @default("DISCONNECTED")
   
-  // Relação com as chaves de autenticação (Segurança)
   authKeys      WhatsAppAuthKey[]
 
   agentId       String?
@@ -96,15 +97,17 @@ model WhatsAppSession {
 model WhatsAppAuthKey {
   id          String   @id @default(uuid())
   sessionId   String
-  keyId       String   // Identificador da chave (ex: "creds", "sender-key-xyz")
-  type        String   // Categoria da chave
-  value       Json     // Valor criptografado (Buffer serializado)
+  keyId       String   
+  type        String   
+  value       Json     
   
   session     WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  @@unique([sessionId, keyId]) // Garante que não duplicamos chaves
+  @@unique([sessionId, keyId])
   @@map("whatsapp_auth_keys")
 }
+
+// --- CRM & ATENDIMENTO ---
 
 model Customer {
   id            String   @id @default(uuid())
@@ -135,13 +138,13 @@ model Message {
   @@map("messages")
 }
 
-// --- MODULO DE AGENDA ---
+// --- MÓDULO DE AGENDA ---
 
 model Service {
   id            String   @id @default(uuid())
   tenantId      String
   name          String   
-  description   String?  
+  description   String?
   price         Decimal  @default(0.0) 
   duration      Int      
   isActive      Boolean  @default(true)
@@ -170,4 +173,44 @@ model Appointment {
   service       Service? @relation(fields: [serviceId], references: [id])
 
   @@map("appointments")
+}
+
+// --- [NOVO] TABELAS DE CONFIGURAÇÃO ---
+
+model TenantSettings {
+  id            String   @id @default(uuid())
+  tenantId      String   @unique // Relação 1:1 obrigatória
+  
+  // Identidade Visual e Branding
+  primaryColor  String   @default("#06b6d4") // Ciano como padrão
+  logoUrl       String?
+  
+  // Configurações de Negócio
+  timezone      String   @default("America/Sao_Paulo")
+  currency      String   @default("BRL")
+  
+  // Horário de funcionamento em JSON para flexibilidade
+  // Ex: { "mon": { "start": "08:00", "end": "18:00" } }
+  businessHours Json?    
+  
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
+}
+
+model UserSettings {
+  id            String   @id @default(uuid())
+  userId        String   @unique // Relação 1:1 obrigatória
+  
+  // Preferências de Interface
+  theme         String   @default("system") // light, dark, system
+  language      String   @default("pt-BR")
+  
+  // Preferências de Notificação
+  emailAlerts   Boolean  @default(true)
+  whatsappAlerts Boolean @default(true)
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
 }
