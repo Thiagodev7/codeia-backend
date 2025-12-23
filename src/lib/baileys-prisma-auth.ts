@@ -8,13 +8,18 @@ import {
 } from '@whiskeysockets/baileys'
 import { logger } from './logger'
 
+/**
+ * Adaptador de Autenticação Baileys <-> Prisma
+ * Permite salvar a sessão do WhatsApp no banco de dados, possibilitando persistência e multi-sessão.
+ */
 export const usePrismaAuthState = async (prisma: PrismaClient, sessionId: string): Promise<{ state: AuthenticationState, saveCreds: () => Promise<void> }> => {
     
-    // 1. Recuperar credenciais
+    // 1. Recuperar credenciais principais (creds.json)
     const credsKey = await prisma.whatsAppAuthKey.findUnique({
         where: { sessionId_keyId: { sessionId, keyId: 'creds' } }
     })
 
+    // Se existirem chaves, hidrata o objeto; senão, inicia novas credenciais
     const creds: AuthenticationCreds = credsKey?.value 
         ? JSON.parse(JSON.stringify(credsKey.value), BufferJSON.reviver) 
         : initAuthCreds()
@@ -23,6 +28,7 @@ export const usePrismaAuthState = async (prisma: PrismaClient, sessionId: string
         state: {
             creds,
             keys: {
+                // Recupera chaves específicas (app-state, sender-key, etc)
                 get: async (type, ids) => {
                     const data: { [key: string]: SignalDataTypeMap[typeof type] } = {}
                     
@@ -40,6 +46,8 @@ export const usePrismaAuthState = async (prisma: PrismaClient, sessionId: string
 
                     return data
                 },
+                
+                // Salva ou deleta chaves em lote (Batch)
                 set: async (data) => {
                     const tasks: any[] = []
 
@@ -53,6 +61,7 @@ export const usePrismaAuthState = async (prisma: PrismaClient, sessionId: string
                             const value = categoryData[id]
                             const keyId = id
                             
+                            // Se value existe, é um UPSERT. Se for null/undefined, é um DELETE.
                             if (value) {
                                 tasks.push(prisma.whatsAppAuthKey.upsert({
                                     where: { sessionId_keyId: { sessionId, keyId } },
@@ -74,21 +83,22 @@ export const usePrismaAuthState = async (prisma: PrismaClient, sessionId: string
                         }
                     }
 
-                    // --- MELHORIA: Tratamento de Erros na Transação ---
+                    // Executa todas as operações em uma única transação para integridade
                     if(tasks.length > 0) {
                         try {
                             await prisma.$transaction(tasks)
                         } catch (error: any) {
-                            // Loga o erro real para não ficarmos cegos com "error: {}"
-                            // Ignora erro de "Record not found" em deletes concorrentes
+                            // Filtro de erro: P2025 (Record not found) é comum em deletes concorrentes e pode ser ignorado.
+                            // Outros erros são logados para auditoria.
                             if (error.code !== 'P2025') {
-                                logger.error({ error: error.message, code: error.code }, '❌ Erro ao salvar chaves do Baileys')
+                                logger.error({ error: error.message, code: error.code }, '❌ Erro ao sincronizar chaves do Baileys no banco')
                             }
                         }
                     }
                 }
             }
         },
+        // Função dedicada para salvar apenas as credenciais principais
         saveCreds: async () => {
             try {
                 await prisma.whatsAppAuthKey.upsert({
@@ -104,7 +114,7 @@ export const usePrismaAuthState = async (prisma: PrismaClient, sessionId: string
                     }
                 })
             } catch (e) {
-                logger.error('Falha ao salvar creds principais')
+                logger.error('❌ Falha crítica ao salvar credenciais principais (creds)')
             }
         }
     }
