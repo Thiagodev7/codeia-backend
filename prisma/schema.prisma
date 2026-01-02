@@ -179,18 +179,22 @@ model Appointment {
 
 model TenantSettings {
   id            String   @id @default(uuid())
-  tenantId      String   @unique // Relação 1:1 obrigatória
+  tenantId      String   @unique
   
-  // Identidade Visual e Branding
-  primaryColor  String   @default("#06b6d4") // Ciano como padrão
+  // Identidade
+  primaryColor  String   @default("#06b6d4")
   logoUrl       String?
   
-  // Configurações de Negócio
+  // [NOVOS CAMPOS] - A IA precisa disso!
+  businessName  String?
+  description   String?  @db.Text
+  address       String?
+  contactPhone  String?
+  website       String?
+  
+  // Negócio
   timezone      String   @default("America/Sao_Paulo")
   currency      String   @default("BRL")
-  
-  // Horário de funcionamento em JSON para flexibilidade
-  // Ex: { "mon": { "start": "08:00", "end": "18:00" } }
   businessHours Json?    
   
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)

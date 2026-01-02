@@ -58,6 +58,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     schema: {
       tags: ['Autenticação'],
       summary: 'Registrar Empresa',
+      security: [{ bearerAuth: [] }],
       description: 'Cria uma nova conta de empresa (Tenant) e o usuário administrador.',
       body: z.object({
         companyName: z.string().min(3, "Nome da empresa muito curto"),

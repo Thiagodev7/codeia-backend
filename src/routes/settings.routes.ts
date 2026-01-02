@@ -1,14 +1,9 @@
-// src/routes/settings.routes.ts
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { SettingsService } from '../services/settings.service'
 import { Errors } from '../lib/errors'
 
-/**
- * Rotas de Configurações
- */
 export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
-  // Middleware de Segurança: Exige autenticação JWT em todas as rotas
   app.addHook('onRequest', async (req) => {
     try {
       await req.jwtVerify()
@@ -19,16 +14,11 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
 
   const service = new SettingsService()
 
-  // ===========================================================================
-  // CONFIGURAÇÕES DA EMPRESA (TENANT)
-  // ===========================================================================
-  
-  // GET /settings/tenant - Visualizar configurações
+  // GET
   app.get('/settings/tenant', {
     schema: {
       tags: ['Configurações'],
       summary: 'Configurações da Empresa',
-      description: 'Retorna personalização visual e regras de negócio da empresa.',
       security: [{ bearerAuth: [] }],
       response: {
         200: z.object({
@@ -36,7 +26,12 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
           primaryColor: z.string(),
           logoUrl: z.string().nullable(),
           timezone: z.string(),
-          businessHours: z.any().nullable()
+          businessHours: z.any().nullable(),
+          businessName: z.string().nullable(),
+          description: z.string().nullable(),
+          address: z.string().nullable(),
+          contactPhone: z.string().nullable(),
+          website: z.string().nullable(),
         })
       }
     }
@@ -45,36 +40,39 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
     return service.getTenantSettings(tenantId)
   })
 
-  // PUT /settings/tenant - Atualizar configurações (Somente ADMIN)
+  // PUT - ATUALIZADO: Agora aceita .nullable() em todos os campos opcionais
   app.put('/settings/tenant', {
     schema: {
       tags: ['Configurações'],
       summary: 'Atualizar Empresa',
       security: [{ bearerAuth: [] }],
       body: z.object({
-        primaryColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Cor inválida (Use Hex: #RRGGBB)").optional(),
-        logoUrl: z.string().url("URL de logo inválida").optional().or(z.literal('')),
+        primaryColor: z.string().regex(/^#/, "Deve ser Hex").optional(),
+        // Aceita string URL, string vazia ou null
+        logoUrl: z.string().url().optional().or(z.literal('')).or(z.null()), 
         timezone: z.string().optional(),
-        businessHours: z.any().optional() // JSON livre para horários
+        businessHours: z.any().optional(),
+        // Campos de Negócio (Aceitam null)
+        businessName: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        address: z.string().nullable().optional(),
+        contactPhone: z.string().nullable().optional(),
+        website: z.string().nullable().optional()
       })
     }
   }, async (req, reply) => {
     const { tenantId, role } = req.user as { tenantId: string, role: string }
     
-    // Regra de Negócio: Proteção de acesso
     if (role !== 'ADMIN') {
-        throw Errors.Forbidden('Apenas administradores podem alterar configurações globais da empresa.')
+        throw Errors.Forbidden('Apenas administradores podem alterar configurações.')
     }
 
-    const updated = await service.updateTenantSettings(tenantId, req.body)
+    // O service já sabe lidar com os dados
+    const updated = await service.updateTenantSettings(tenantId, req.body as any)
     return reply.send(updated)
   })
 
-  // ===========================================================================
-  // PREFERÊNCIAS DO USUÁRIO (ME)
-  // ===========================================================================
-
-  // GET /settings/me - Minhas preferências
+  // ... (Rotas de UserSettings/ME permanecem iguais)
   app.get('/settings/me', {
     schema: {
       tags: ['Configurações'],
@@ -94,7 +92,6 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
     return service.getUserSettings(userId)
   })
 
-  // PUT /settings/me - Atualizar minhas preferências
   app.put('/settings/me', {
     schema: {
       tags: ['Configurações'],
