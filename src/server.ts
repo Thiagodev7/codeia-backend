@@ -5,7 +5,6 @@ import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import { serializerCompiler, validatorCompiler, jsonSchemaTransform } from 'fastify-type-provider-zod'
 
-// --- ROTAS DE NEGÓCIO ---
 import { authRoutes } from './routes/auth.routes'
 import { whatsappRoutes } from './routes/whatsapp.routes'
 import { userRoutes } from './routes/user.routes'
@@ -14,20 +13,18 @@ import { aiRoutes } from './routes/ai.routes'
 import { serviceRoutes } from './routes/service.routes'
 import { crmRoutes } from './routes/crm.routes'
 import { appointmentRoutes } from './routes/appointment.routes'
-import { settingsRoutes } from './routes/settings.routes' // <--- IMPORTAÇÃO NOVA
+import { settingsRoutes } from './routes/settings.routes'
 
-// --- INFRAESTRUTURA & SERVICES ---
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
 import { WhatsAppManager } from './services/whatsapp-manager.service'
+import { ReminderService } from './services/reminder.service' // ✅ IMPORTAR
 
-// --- PLUGINS DE ARQUITETURA ---
 import { contextPlugin } from './plugins/context.plugin'
 import { errorHandlerPlugin } from './plugins/error-handler.plugin'
 
 const app = Fastify()
 
-// --- CONFIGURAÇÃO DO SWAGGER (ZOD) ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
 
@@ -43,24 +40,12 @@ app.register(fastifySwagger, {
 
 app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
-// --- PLUGINS GERAIS ---
-
-// 1. Contexto & Logs
 app.register(contextPlugin)
-
-// 2. Tratamento de Erros Global
 app.register(errorHandlerPlugin)
 
-// 3. Segurança (CORS)
-app.register(cors, { 
-  origin: true 
-})
+app.register(cors, { origin: true })
+app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret' })
 
-app.register(jwt, { 
-  secret: process.env.JWT_SECRET || 'dev-secret' 
-})
-
-// --- REGISTRO DAS ROTAS DA API ---
 app.register(authRoutes)
 app.register(whatsappRoutes)
 app.register(userRoutes)
@@ -69,9 +54,8 @@ app.register(aiRoutes)
 app.register(serviceRoutes)
 app.register(crmRoutes)
 app.register(appointmentRoutes)
-app.register(settingsRoutes) // <--- REGISTRO NOVO
+app.register(settingsRoutes)
 
-// --- FUNÇÃO DE RESTAURAÇÃO DE SESSÕES (WHATSAPP) ---
 async function restoreSessions() {
   try {
     const sessions = await prisma.whatsAppSession.findMany({ 
@@ -95,10 +79,12 @@ async function restoreSessions() {
   }
 }
 
-// --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen({ port: 3333, host: '0.0.0.0' }).then(async (address) => {
   logger.info(`🚀 CodeIA Backend (API Pura) rodando em ${address}`)
   logger.info(`📑 Documentação disponível em ${address}/docs`)
   
   await restoreSessions()
+  
+  // ✅ INICIAR O LOOP DE LEMBRETES
+  ReminderService.start()
 })

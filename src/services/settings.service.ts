@@ -1,4 +1,6 @@
+// src/services/settings.service.ts
 import { prisma } from '../lib/prisma'
+import { Errors } from '../lib/errors' // ✅ Importante
 
 interface BusinessHourInput {
   dayOfWeek: number
@@ -16,7 +18,6 @@ export class SettingsService {
       update: {}
     })
 
-    // Retorna os horários ordenados (0=Dom, 1=Seg...)
     const businessHours = await prisma.businessHour.findMany({
       where: { tenantId },
       orderBy: { dayOfWeek: 'asc' }
@@ -26,17 +27,34 @@ export class SettingsService {
   }
 
   async updateTenantSettings(tenantId: string, data: any) {
-    // Separa os horários dos outros dados
     const { businessHours, ...settingsData } = data
 
-    // 1. Salva dados simples
+    // 🔒 VALIDAÇÃO DE PLANO (Feature Gating)
+    // Se o usuário está tentando ativar o lembrete, verificamos o plano.
+    if (settingsData.reminderEnabled === true) {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { plan: true }
+      })
+
+      const plan = tenant?.plan?.toUpperCase() || 'FREE'
+      // Planos permitidos (Regra de Negócio)
+      const allowedPlans = ['SECONDARY', 'THIRD', 'UNLIMITED']
+
+      if (!allowedPlans.includes(plan)) {
+        // Bloqueia a ação e retorna erro 403
+        throw Errors.Forbidden('Recurso exclusivo: Lembretes automáticos disponíveis apenas a partir do plano SECONDARY.')
+      }
+    }
+
+    // 1. Atualiza configurações
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
       create: { tenantId, ...settingsData },
       update: settingsData
     })
 
-    // 2. Salva horários (Upsert em lote)
+    // 2. Atualiza Horários
     if (businessHours && Array.isArray(businessHours)) {
       await prisma.$transaction(
         businessHours.map((hour: BusinessHourInput) => 

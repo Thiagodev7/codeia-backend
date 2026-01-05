@@ -140,6 +140,7 @@ model Appointment {
   startTime     DateTime
   endTime       DateTime
   status        String   @default("SCHEDULED")
+  reminderSent  Boolean  @default(false)
   customer      Customer @relation(fields: [customerId], references: [id])
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   service       Service? @relation(fields: [serviceId], references: [id])
@@ -163,6 +164,8 @@ model TenantSettings {
   timezone      String   @default("America/Sao_Paulo")
   currency      String   @default("BRL")
   // businessHours Json?  <-- REMOVIDO EM FAVOR DA NOVA TABELA
+  reminderEnabled Boolean @default(false)
+  reminderMinutes Int     @default(60)
   
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   @@map("tenant_settings")

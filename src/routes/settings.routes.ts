@@ -14,7 +14,9 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
 
   const service = new SettingsService()
 
-  // GET
+  // ---------------------------------------------------------------------------
+  // GET /settings/tenant - Buscar Configurações
+  // ---------------------------------------------------------------------------
   app.get('/settings/tenant', {
     schema: {
       tags: ['Configurações'],
@@ -26,21 +28,41 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
           primaryColor: z.string(),
           logoUrl: z.string().nullable(),
           timezone: z.string(),
-          businessHours: z.any().nullable(),
+          // businessHours agora vem via 'businessHours' (array da nova tabela) ou tratado no service
+          businessHours: z.array(z.object({
+            dayOfWeek: z.number(),
+            startTime: z.string(),
+            endTime: z.string(),
+            isOpen: z.boolean()
+          })).optional(),
+          
           businessName: z.string().nullable(),
           description: z.string().nullable(),
           address: z.string().nullable(),
           contactPhone: z.string().nullable(),
           website: z.string().nullable(),
+
+          // ✅ NOVOS CAMPOS (Correção Principal)
+          reminderEnabled: z.boolean(),
+          reminderMinutes: z.number()
         })
       }
     }
   }, async (req) => {
     const { tenantId } = req.user as { tenantId: string }
-    return service.getTenantSettings(tenantId)
+    const data = await service.getTenantSettings(tenantId)
+    
+    // Garante valores default se vierem nulos do banco (para passar no Zod)
+    return {
+      ...data,
+      reminderEnabled: data.reminderEnabled ?? false,
+      reminderMinutes: data.reminderMinutes ?? 60
+    }
   })
 
-  // PUT - ATUALIZADO: Agora aceita .nullable() em todos os campos opcionais
+  // ---------------------------------------------------------------------------
+  // PUT /settings/tenant - Atualizar Configurações
+  // ---------------------------------------------------------------------------
   app.put('/settings/tenant', {
     schema: {
       tags: ['Configurações'],
@@ -48,16 +70,26 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
       security: [{ bearerAuth: [] }],
       body: z.object({
         primaryColor: z.string().regex(/^#/, "Deve ser Hex").optional(),
-        // Aceita string URL, string vazia ou null
         logoUrl: z.string().url().optional().or(z.literal('')).or(z.null()), 
         timezone: z.string().optional(),
-        businessHours: z.any().optional(),
-        // Campos de Negócio (Aceitam null)
+        
+        // Array de horários
+        businessHours: z.array(z.object({
+          dayOfWeek: z.number(),
+          startTime: z.string(),
+          endTime: z.string(),
+          isOpen: z.boolean()
+        })).optional(),
+
         businessName: z.string().nullable().optional(),
         description: z.string().nullable().optional(),
         address: z.string().nullable().optional(),
         contactPhone: z.string().nullable().optional(),
-        website: z.string().nullable().optional()
+        website: z.string().nullable().optional(),
+
+        // ✅ NOVOS CAMPOS NO BODY (Correção Principal)
+        reminderEnabled: z.boolean().optional(),
+        reminderMinutes: z.number().optional()
       })
     }
   }, async (req, reply) => {
@@ -67,12 +99,13 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         throw Errors.Forbidden('Apenas administradores podem alterar configurações.')
     }
 
-    // O service já sabe lidar com os dados
-    const updated = await service.updateTenantSettings(tenantId, req.body as any)
+    const updated = await service.updateTenantSettings(tenantId, req.body)
     return reply.send(updated)
   })
 
-  // ... (Rotas de UserSettings/ME permanecem iguais)
+  // ---------------------------------------------------------------------------
+  // User Settings (Mantido igual)
+  // ---------------------------------------------------------------------------
   app.get('/settings/me', {
     schema: {
       tags: ['Configurações'],
