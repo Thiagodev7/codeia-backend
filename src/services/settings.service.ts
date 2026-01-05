@@ -1,60 +1,70 @@
-// src/services/settings.service.ts
 import { prisma } from '../lib/prisma'
 
-// Interfaces para tipagem dos dados de entrada
-interface UpdateTenantSettingsInput {
-  primaryColor?: string
-  logoUrl?: string
-  timezone?: string
-  businessHours?: any // JSON flexível
+interface BusinessHourInput {
+  dayOfWeek: number
+  startTime: string
+  endTime: string
+  isOpen: boolean
 }
 
-interface UpdateUserSettingsInput {
-  theme?: string
-  language?: string
-  emailAlerts?: boolean
-  whatsappAlerts?: boolean
-}
-
-/**
- * Service de Configurações
- * Gerencia preferências globais da empresa (Tenant) e individuais do usuário.
- */
 export class SettingsService {
   
-  // --- TENANT SETTINGS (Configurações da Empresa) ---
-
-  /**
-   * Busca as configurações da empresa.
-   * Se não existirem, cria com os valores padrão definidos no Schema.
-   */
   async getTenantSettings(tenantId: string) {
-    return prisma.tenantSettings.upsert({
+    const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
-      create: { tenantId }, // Cria padrão se não existir
-      update: {}            // Não faz nada se já existir
+      create: { tenantId },
+      update: {}
     })
+
+    // Retorna os horários ordenados (0=Dom, 1=Seg...)
+    const businessHours = await prisma.businessHour.findMany({
+      where: { tenantId },
+      orderBy: { dayOfWeek: 'asc' }
+    })
+
+    return { ...settings, businessHours }
   }
 
-  /**
-   * Atualiza as configurações da empresa.
-   */
-  async updateTenantSettings(tenantId: string, data: UpdateTenantSettingsInput) {
-    return prisma.tenantSettings.upsert({
+  async updateTenantSettings(tenantId: string, data: any) {
+    // Separa os horários dos outros dados
+    const { businessHours, ...settingsData } = data
+
+    // 1. Salva dados simples
+    const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
-      create: { 
-        tenantId,
-        ...data
-      },
-      update: data
+      create: { tenantId, ...settingsData },
+      update: settingsData
     })
+
+    // 2. Salva horários (Upsert em lote)
+    if (businessHours && Array.isArray(businessHours)) {
+      await prisma.$transaction(
+        businessHours.map((hour: BusinessHourInput) => 
+          prisma.businessHour.upsert({
+            where: { 
+              tenantId_dayOfWeek: { tenantId, dayOfWeek: hour.dayOfWeek } 
+            },
+            create: {
+              tenantId,
+              dayOfWeek: hour.dayOfWeek,
+              startTime: hour.startTime,
+              endTime: hour.endTime,
+              isOpen: hour.isOpen
+            },
+            update: {
+              startTime: hour.startTime,
+              endTime: hour.endTime,
+              isOpen: hour.isOpen
+            }
+          })
+        )
+      )
+    }
+
+    return this.getTenantSettings(tenantId)
   }
 
-  // --- USER SETTINGS (Preferências do Usuário) ---
-
-  /**
-   * Busca as preferências do usuário logado.
-   */
+  // --- User Settings ---
   async getUserSettings(userId: string) {
     return prisma.userSettings.upsert({
       where: { userId },
@@ -63,16 +73,10 @@ export class SettingsService {
     })
   }
 
-  /**
-   * Atualiza as preferências do usuário logado.
-   */
-  async updateUserSettings(userId: string, data: UpdateUserSettingsInput) {
+  async updateUserSettings(userId: string, data: any) {
     return prisma.userSettings.upsert({
       where: { userId },
-      create: { 
-        userId, 
-        ...data 
-      },
+      create: { userId, ...data },
       update: data
     })
   }

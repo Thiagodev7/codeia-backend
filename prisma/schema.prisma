@@ -9,8 +9,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- CORE DO SAAS ---
-
 model Tenant {
   id            String   @id @default(uuid())
   name          String
@@ -20,7 +18,6 @@ model Tenant {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // Relacionamentos
   users         User[]
   agents        Agent[]
   customers     Customer[]
@@ -28,12 +25,15 @@ model Tenant {
   messages      Message[]
   appointments  Appointment[]
   services      Service[]
-
-  // [NOVO] Configurações da Empresa (1:1)
+  
   settings      TenantSettings?
+  businessHours BusinessHour[] // ✅ Novo Relacionamento
 
   @@map("tenants")
 }
+
+// ... (Models User, Agent, WhatsAppSession, WhatsAppAuthKey, Customer, Message, Service, Appointment mantidos iguais) ...
+// (Copie os models intermediários do seu arquivo original se necessário, estou focando nas mudanças)
 
 model User {
   id            String   @id @default(uuid())
@@ -42,19 +42,13 @@ model User {
   email         String   @unique
   phone         String?
   passwordHash  String
-  role          String   @default("ADMIN") // 'ADMIN' ou 'AGENT'
+  role          String   @default("ADMIN")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-
-  // [NOVO] Preferências do Usuário (1:1)
   settings      UserSettings?
-
   @@map("users")
 }
-
-// --- MÓDULO DE IA ---
 
 model Agent {
   id            String   @id @default(uuid())
@@ -66,31 +60,23 @@ model Agent {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   waSessions    WhatsAppSession[]
-
   @@unique([tenantId, slug])
   @@map("agents")
 }
-
-// --- MÓDULO WHATSAPP (BAILEYS ENGINE) ---
 
 model WhatsAppSession {
   id            String   @id @default(uuid())
   tenantId      String
   sessionName   String   @default("Principal")
   status        String   @default("DISCONNECTED")
-  
   authKeys      WhatsAppAuthKey[]
-
   agentId       String?
   agent         Agent?   @relation(fields: [agentId], references: [id])
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
   @@map("whatsapp_sessions")
 }
 
@@ -99,15 +85,11 @@ model WhatsAppAuthKey {
   sessionId   String
   keyId       String   
   type        String   
-  value       Json     
-  
+  value       Json    
   session     WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
   @@unique([sessionId, keyId])
   @@map("whatsapp_auth_keys")
 }
-
-// --- CRM & ATENDIMENTO ---
 
 model Customer {
   id            String   @id @default(uuid())
@@ -115,11 +97,9 @@ model Customer {
   phone         String
   name          String?
   createdAt     DateTime @default(now())
-
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   messages      Message[]
   appointments  Appointment[]
-
   @@unique([tenantId, phone])
   @@map("customers")
 }
@@ -128,17 +108,13 @@ model Message {
   id            String   @id @default(uuid())
   tenantId      String
   customerId    String
-  role          String   // 'user' ou 'model'
+  role          String   
   content       String   @db.Text
   createdAt     DateTime @default(now())
-
   customer      Customer @relation(fields: [customerId], references: [id])
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  
   @@map("messages")
 }
-
-// --- MÓDULO DE AGENDA ---
 
 model Service {
   id            String   @id @default(uuid())
@@ -149,10 +125,8 @@ model Service {
   duration      Int      
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
-
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   appointments  Appointment[]
-
   @@map("services")
 }
 
@@ -161,60 +135,62 @@ model Appointment {
   tenantId      String
   customerId    String
   serviceId     String?
-  
   title         String
   description   String?
   startTime     DateTime
   endTime       DateTime
   status        String   @default("SCHEDULED")
-  
   customer      Customer @relation(fields: [customerId], references: [id])
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   service       Service? @relation(fields: [serviceId], references: [id])
-
   @@map("appointments")
 }
 
-// --- [NOVO] TABELAS DE CONFIGURAÇÃO ---
+// --- CONFIGURAÇÕES ---
 
 model TenantSettings {
   id            String   @id @default(uuid())
   tenantId      String   @unique
   
-  // Identidade
   primaryColor  String   @default("#06b6d4")
   logoUrl       String?
-  
-  // [NOVOS CAMPOS] - A IA precisa disso!
   businessName  String?
   description   String?  @db.Text
   address       String?
   contactPhone  String?
   website       String?
   
-  // Negócio
   timezone      String   @default("America/Sao_Paulo")
   currency      String   @default("BRL")
-  businessHours Json?    
+  // businessHours Json?  <-- REMOVIDO EM FAVOR DA NOVA TABELA
   
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
   @@map("tenant_settings")
+}
+
+// ✅ TABELA NOVA
+model BusinessHour {
+  id        String  @id @default(uuid())
+  tenantId  String
+  
+  dayOfWeek Int     // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+  startTime String  // "09:00"
+  endTime   String  // "18:00"
+  isOpen    Boolean @default(true)
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dayOfWeek])
+  @@map("business_hours")
 }
 
 model UserSettings {
   id            String   @id @default(uuid())
-  userId        String   @unique // Relação 1:1 obrigatória
-  
-  // Preferências de Interface
-  theme         String   @default("system") // light, dark, system
+  userId        String   @unique 
+  theme         String   @default("system")
   language      String   @default("pt-BR")
-  
-  // Preferências de Notificação
   emailAlerts   Boolean  @default(true)
   whatsappAlerts Boolean @default(true)
-
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@map("user_settings")
 }
