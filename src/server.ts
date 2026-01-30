@@ -1,24 +1,25 @@
-import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
-import { serializerCompiler, validatorCompiler, jsonSchemaTransform } from 'fastify-type-provider-zod'
+import Fastify from 'fastify'
+import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 
-import { authRoutes } from './routes/auth.routes'
-import { whatsappRoutes } from './routes/whatsapp.routes'
-import { userRoutes } from './routes/user.routes'
-import { tenantRoutes } from './routes/tenant.routes'
 import { aiRoutes } from './routes/ai.routes'
-import { serviceRoutes } from './routes/service.routes'
-import { crmRoutes } from './routes/crm.routes'
 import { appointmentRoutes } from './routes/appointment.routes'
+import { authRoutes } from './routes/auth.routes'
+import { crmRoutes } from './routes/crm.routes'
+import { serviceRoutes } from './routes/service.routes'
 import { settingsRoutes } from './routes/settings.routes'
+import { tenantRoutes } from './routes/tenant.routes'
+import { userRoutes } from './routes/user.routes'
+import { whatsappRoutes } from './routes/whatsapp.routes'
 
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
+import { ReminderService } from './services/reminder.service'
 import { WhatsAppManager } from './services/whatsapp-manager.service'
-import { ReminderService } from './services/reminder.service' // ✅ IMPORTAR
+import { WhatsAppWorker } from './services/whatsapp.worker'
 
 import { contextPlugin } from './plugins/context.plugin'
 import { errorHandlerPlugin } from './plugins/error-handler.plugin'
@@ -83,8 +84,24 @@ app.listen({ port: 3333, host: '0.0.0.0' }).then(async (address) => {
   logger.info(`🚀 CodeIA Backend (API Pura) rodando em ${address}`)
   logger.info(`📑 Documentação disponível em ${address}/docs`)
   
+  // ✅ Iniciar WhatsApp Worker (processa jobs da fila)
+  const whatsappWorker = new WhatsAppWorker()
+  logger.info('📱 WhatsApp Worker ativado')
+  
+  // Restaura sessões ativas (enfileira jobs de START)
   await restoreSessions()
   
-  // ✅ INICIAR O LOOP DE LEMBRETES
+  // ✅ Iniciar loop de lembretes
   ReminderService.start()
+  
+  // Graceful shutdown
+  const shutdown = async () => {
+    logger.info('🛑 Encerrando servidor...')
+    await whatsappWorker.shutdown()
+    await app.close()
+    process.exit(0)
+  }
+  
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 })

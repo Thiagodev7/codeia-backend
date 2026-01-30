@@ -1,8 +1,8 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { WhatsAppManager } from '../services/whatsapp-manager.service'
-import { prisma } from '../lib/prisma'
 import { Errors } from '../lib/errors'
+import { prisma } from '../lib/prisma'
+import { WhatsAppManager } from '../services/whatsapp-manager.service'
 
 export const whatsappRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', async (req) => await req.jwtVerify())
@@ -49,8 +49,10 @@ export const whatsappRoutes: FastifyPluginAsyncZod = async (app) => {
     })
 
     // Mescla com status em tempo real do Manager (QR Code, etc)
-    return dbSessions.map(s => {
-        const realtime = manager.getSessionStatus(s.id)
+    // Agora async pois busca do Redis
+    const sessionsWithStatus = await Promise.all(
+      dbSessions.map(async (s) => {
+        const realtime = await manager.getSessionStatus(s.id)
         return {
             id: s.id,
             sessionName: s.sessionName,
@@ -59,7 +61,10 @@ export const whatsappRoutes: FastifyPluginAsyncZod = async (app) => {
             qrCode: realtime.qrCode,
             phoneNumber: realtime.phoneNumber
         }
-    })
+      })
+    )
+    
+    return sessionsWithStatus
   })
 
   // ---------------------------------------------------------------------------
