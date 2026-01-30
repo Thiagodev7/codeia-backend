@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -30,11 +33,17 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.2.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.10.4",
     "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^4.0.18",
+    "ioredis-mock": "^8.13.1",
     "prisma": "^5.7.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.6.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.4"
   }
 }
