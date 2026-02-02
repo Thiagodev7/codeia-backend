@@ -40,8 +40,8 @@ export class LoginService {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        tenantId: user.tenantId
-      }
+        tenantId: user.tenantId,
+      },
     }
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Testes Unitários: AppointmentService
- * 
+ *
  * Testa a lógica de criação, cancelamento e reagendamento de appointments.
  */
 import { addMinutes, subDays } from 'date-fns'
@@ -42,11 +42,11 @@ describe('AppointmentService', () => {
         where: { tenantId },
         include: {
           customer: { select: { id: true, name: true, phone: true } },
-          service: { select: { id: true, name: true, price: true } }
+          service: { select: { id: true, name: true, price: true } },
         },
         orderBy: { startTime: 'desc' },
         skip: 0,
-        take: 20
+        take: 20,
       })
     })
   })
@@ -56,7 +56,9 @@ describe('AppointmentService', () => {
   // ---------------------------------------------------------------------------
   describe('listUpcoming', () => {
     it('should return only scheduled appointments for customer', async () => {
-      const mockAppointments = [createMockAppointment({ tenantId, customerId, status: 'SCHEDULED' })]
+      const mockAppointments = [
+        createMockAppointment({ tenantId, customerId, status: 'SCHEDULED' }),
+      ]
       mockedPrisma.appointment.findMany.mockResolvedValue(mockAppointments as any)
 
       const result = await service.listUpcoming(tenantId, customerId)
@@ -70,7 +72,7 @@ describe('AppointmentService', () => {
             status: 'SCHEDULED',
           }),
           orderBy: { startTime: 'asc' },
-          include: { service: true }
+          include: { service: true },
         })
       )
     })
@@ -81,41 +83,46 @@ describe('AppointmentService', () => {
   // ---------------------------------------------------------------------------
   describe('cancelAppointment', () => {
     it('should cancel existing appointment', async () => {
-      const appointment = createMockAppointment({ 
-        id: 'apt-123', 
-        tenantId, 
-        customerId, 
-        status: 'SCHEDULED' 
+      const appointment = createMockAppointment({
+        id: 'apt-123',
+        tenantId,
+        customerId,
+        status: 'SCHEDULED',
       })
       mockedPrisma.appointment.findFirst.mockResolvedValue(appointment as any)
-      mockedPrisma.appointment.update.mockResolvedValue({ ...appointment, status: 'CANCELED' } as any)
+      mockedPrisma.appointment.update.mockResolvedValue({
+        ...appointment,
+        status: 'CANCELED',
+      } as any)
 
       const result = await service.cancelAppointment(tenantId, customerId, 'apt-123')
 
       expect(result.status).toBe('CANCELED')
       expect(mockedPrisma.appointment.update).toHaveBeenCalledWith({
         where: { id: 'apt-123' },
-        data: { status: 'CANCELED' }
+        data: { status: 'CANCELED' },
       })
     })
 
     it('should throw NotFound if appointment does not exist', async () => {
       mockedPrisma.appointment.findFirst.mockResolvedValue(null)
 
-      await expect(service.cancelAppointment(tenantId, customerId, 'non-existent'))
-        .rejects.toThrow('Agendamento não encontrado')
+      await expect(service.cancelAppointment(tenantId, customerId, 'non-existent')).rejects.toThrow(
+        'Agendamento não encontrado'
+      )
     })
 
     it('should throw BadRequest if already canceled', async () => {
-      const canceledAppointment = createMockAppointment({ 
-        tenantId, 
-        customerId, 
-        status: 'CANCELED' 
+      const canceledAppointment = createMockAppointment({
+        tenantId,
+        customerId,
+        status: 'CANCELED',
       })
       mockedPrisma.appointment.findFirst.mockResolvedValue(canceledAppointment as any)
 
-      await expect(service.cancelAppointment(tenantId, customerId, 'apt-123'))
-        .rejects.toThrow('já foi cancelado')
+      await expect(service.cancelAppointment(tenantId, customerId, 'apt-123')).rejects.toThrow(
+        'já foi cancelado'
+      )
     })
   })
 
@@ -130,7 +137,7 @@ describe('AppointmentService', () => {
         tenantId,
         customerId,
         startTime: futureDate,
-        status: 'SCHEDULED'
+        status: 'SCHEDULED',
       })
 
       // Mock transaction
@@ -139,9 +146,9 @@ describe('AppointmentService', () => {
           service: { findFirst: vi.fn().mockResolvedValue(null) },
           appointment: {
             findFirst: vi.fn().mockResolvedValue(null), // Sem conflito
-            create: vi.fn().mockResolvedValue(mockCreatedAppointment)
+            create: vi.fn().mockResolvedValue(mockCreatedAppointment),
           },
-          customer: { update: vi.fn() }
+          customer: { update: vi.fn() },
         })
       })
 
@@ -149,7 +156,7 @@ describe('AppointmentService', () => {
         tenantId,
         customerId,
         title: 'Consulta',
-        startTime: futureDate
+        startTime: futureDate,
       })
 
       expect(result).toBeDefined()
@@ -159,12 +166,14 @@ describe('AppointmentService', () => {
     it('should throw error for past dates', async () => {
       const pastDate = subDays(new Date(), 1) // Ontem
 
-      await expect(service.createAppointment({
-        tenantId,
-        customerId,
-        title: 'Consulta',
-        startTime: pastDate
-      })).rejects.toThrow('passado')
+      await expect(
+        service.createAppointment({
+          tenantId,
+          customerId,
+          title: 'Consulta',
+          startTime: pastDate,
+        })
+      ).rejects.toThrow('passado')
     })
 
     it('should throw Conflict when time slot is occupied', async () => {
@@ -176,18 +185,20 @@ describe('AppointmentService', () => {
           service: { findFirst: vi.fn().mockResolvedValue(null) },
           appointment: {
             findFirst: vi.fn().mockResolvedValue(existingAppointment), // Conflito!
-            create: vi.fn()
+            create: vi.fn(),
           },
-          customer: { update: vi.fn() }
+          customer: { update: vi.fn() },
         })
       })
 
-      await expect(service.createAppointment({
-        tenantId,
-        customerId,
-        title: 'Consulta',
-        startTime: futureDate
-      })).rejects.toThrow('indisponível')
+      await expect(
+        service.createAppointment({
+          tenantId,
+          customerId,
+          title: 'Consulta',
+          startTime: futureDate,
+        })
+      ).rejects.toThrow('indisponível')
     })
 
     it('should use service duration when serviceId is provided', async () => {
@@ -200,9 +211,9 @@ describe('AppointmentService', () => {
           service: { findFirst: vi.fn().mockResolvedValue(mockService) },
           appointment: {
             findFirst: vi.fn().mockResolvedValue(null),
-            create: vi.fn().mockResolvedValue(mockCreatedAppointment)
+            create: vi.fn().mockResolvedValue(mockCreatedAppointment),
           },
-          customer: { update: vi.fn() }
+          customer: { update: vi.fn() },
         })
       })
 
@@ -211,7 +222,7 @@ describe('AppointmentService', () => {
         customerId,
         serviceId: 'svc-123',
         title: 'Serviço',
-        startTime: futureDate
+        startTime: futureDate,
       })
 
       expect(mockedPrisma.$transaction).toHaveBeenCalled()
@@ -225,24 +236,26 @@ describe('AppointmentService', () => {
     it('should throw error for past dates', async () => {
       const pastDate = subDays(new Date(), 1)
 
-      await expect(service.rescheduleAppointment(tenantId, 'apt-123', pastDate))
-        .rejects.toThrow('passado')
+      await expect(service.rescheduleAppointment(tenantId, 'apt-123', pastDate)).rejects.toThrow(
+        'passado'
+      )
     })
 
     it('should throw NotFound if appointment does not exist', async () => {
       const futureDate = addMinutes(new Date(), 120)
-      
+
       mockedPrisma.$transaction.mockImplementation(async (fn: any) => {
         return fn({
           appointment: {
             findFirst: vi.fn().mockResolvedValue(null), // Não existe
-            update: vi.fn()
-          }
+            update: vi.fn(),
+          },
         })
       })
 
-      await expect(service.rescheduleAppointment(tenantId, 'non-existent', futureDate))
-        .rejects.toThrow('não encontrado')
+      await expect(
+        service.rescheduleAppointment(tenantId, 'non-existent', futureDate)
+      ).rejects.toThrow('não encontrado')
     })
   })
 })

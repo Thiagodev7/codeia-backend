@@ -1,15 +1,15 @@
 /**
  * Reminder Worker
- * 
+ *
  * Worker dedicado que processa jobs de lembrete via BullMQ.
  * Usa cron job (a cada minuto) para verificar agendamentos
  * e enviar lembretes via WhatsApp.
- * 
+ *
  * Vantagens sobre setInterval:
  * - Apenas uma instância processa cada job (sem duplicação)
  * - Jobs persistem no Redis
  * - Retry automático em caso de falha
- * 
+ *
  * @module services/reminder.worker
  */
 import { Job, Worker } from 'bullmq'
@@ -29,14 +29,10 @@ export class ReminderWorker {
   private worker: Worker<ReminderJobData>
 
   constructor() {
-    this.worker = new Worker<ReminderJobData>(
-      'reminder',
-      this.processJob.bind(this),
-      { 
-        connection: redis,
-        concurrency: 1 // Apenas 1 job por vez (evita race conditions)
-      }
-    )
+    this.worker = new Worker<ReminderJobData>('reminder', this.processJob.bind(this), {
+      connection: redis,
+      concurrency: 1, // Apenas 1 job por vez (evita race conditions)
+    })
 
     this.worker.on('completed', (job) => {
       logger.debug({ jobId: job.id }, '✅ Job de lembrete concluído')
@@ -48,7 +44,7 @@ export class ReminderWorker {
 
     // Registra job repetitivo
     this.scheduleRepeatingJob()
-    
+
     logger.info('⏰ Reminder Worker iniciado e aguardando jobs...')
   }
 
@@ -71,11 +67,11 @@ export class ReminderWorker {
       await reminderQueue.add(
         'check-reminders',
         { type: 'CHECK_REMINDERS' },
-        { 
-          repeat: { 
-            pattern: '* * * * *' // Cron: a cada minuto
+        {
+          repeat: {
+            pattern: '* * * * *', // Cron: a cada minuto
           },
-          jobId: 'reminder-cron' // ID fixo para evitar duplicação
+          jobId: 'reminder-cron', // ID fixo para evitar duplicação
         }
       )
 
@@ -107,7 +103,7 @@ export class ReminderWorker {
 
       // Busca tenants com lembretes habilitados
       const settingsWithReminders = await prisma.tenantSettings.findMany({
-        where: { reminderEnabled: true }
+        where: { reminderEnabled: true },
       })
 
       if (settingsWithReminders.length === 0) {
@@ -128,17 +124,20 @@ export class ReminderWorker {
             reminderSent: false,
             startTime: {
               gte: targetTimeStart,
-              lte: targetTimeEnd
-            }
+              lte: targetTimeEnd,
+            },
           },
-          include: { customer: true }
+          include: { customer: true },
         })
 
         if (appointments.length > 0) {
-          logger.info({ 
-            tenantId: setting.tenantId, 
-            count: appointments.length 
-          }, `🎯 Encontrados ${appointments.length} agendamentos para lembrar!`)
+          logger.info(
+            {
+              tenantId: setting.tenantId,
+              count: appointments.length,
+            },
+            `🎯 Encontrados ${appointments.length} agendamentos para lembrar!`
+          )
         }
 
         // Envia lembretes
@@ -156,26 +155,26 @@ export class ReminderWorker {
    * Envia lembrete individual
    */
   private async sendReminder(
-    waManager: WhatsAppManager, 
-    tenantId: string, 
+    waManager: WhatsAppManager,
+    tenantId: string,
     appointment: any
   ): Promise<void> {
     const phone = appointment.customer.phone
-    const timeString = appointment.startTime.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    const timeString = appointment.startTime.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
     })
-    
+
     const message = `🔔 *Lembrete Automático*\n\nOlá ${appointment.customer.name || 'Cliente'}! Lembrete do seu agendamento hoje às *${timeString}*.\n\nResponda se precisar reagendar. Até logo!`
 
     logger.info({ appointmentId: appointment.id, phone }, '🚀 Enviando lembrete...')
-    
+
     const sent = await waManager.sendTextMessage(tenantId, phone, message)
 
     if (sent) {
       await prisma.appointment.update({
         where: { id: appointment.id },
-        data: { reminderSent: true }
+        data: { reminderSent: true },
       })
       logger.info({ appointmentId: appointment.id }, '✅ Lembrete enviado!')
     } else {

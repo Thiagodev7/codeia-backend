@@ -14,24 +14,24 @@ export const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
     if (error instanceof AppError) {
       // Log como WARN pois é regra de negócio, não falha de sistema
       logger.warn({ code: error.code, details: error.details }, error.message)
-      
+
       return reply.status(error.statusCode).send({
         code: error.code,
         message: error.message,
         details: error.details,
-        requestId
+        requestId,
       })
     }
 
     // 2. Erros de Validação (Zod / Fastify Schema)
     if (error instanceof ZodError) {
       logger.warn({ issues: error.issues }, '⚠️ Falha de Validação')
-      
+
       return reply.status(400).send({
         code: 'VALIDATION_ERROR',
         message: 'Dados de entrada inválidos.',
-        details: error.format(), 
-        requestId
+        details: error.format(),
+        requestId,
       })
     }
 
@@ -41,32 +41,35 @@ export const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
       if (error.code === 'P2002') {
         const fields = (error.meta as any)?.target || []
         logger.warn({ fields }, '⚠️ Conflito de unicidade no banco')
-        
+
         return reply.status(409).send({
           code: 'CONFLICT_ERROR',
           message: `Já existe um registro com este valor: ${fields}`,
-          requestId
+          requestId,
         })
       }
-      
+
       // P2025: Registro não encontrado (no update/delete)
       if (error.code === 'P2025') {
         return reply.status(404).send({
           code: 'RESOURCE_NOT_FOUND',
           message: 'Registro não encontrado.',
-          requestId
+          requestId,
         })
       }
     }
 
     // 4. Erros Desconhecidos (Crash / Bug / NullPointer)
     // Logamos como ERROR com Stack Trace completo para investigar
-    logger.error({ error: error.name, message: error.message, stack: error.stack }, '🔥 CRITICAL SERVER ERROR')
+    logger.error(
+      { error: error.name, message: error.message, stack: error.stack },
+      '🔥 CRITICAL SERVER ERROR'
+    )
 
     return reply.status(500).send({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Ocorreu um erro interno no servidor. Nossa equipe foi notificada.',
-      requestId // Importante para o usuário informar no suporte
+      requestId, // Importante para o usuário informar no suporte
     })
   })
 }

@@ -1,6 +1,6 @@
 /**
  * Factories de Dados para Testes
- * 
+ *
  * Utiliza @faker-js/faker para gerar dados realistas e consistentes.
  */
 import { faker } from '@faker-js/faker/locale/pt_BR'
@@ -112,7 +112,9 @@ export const createMockService = (overrides: Partial<MockService> = {}): MockSer
   ...overrides,
 })
 
-export const createMockAppointment = (overrides: Partial<MockAppointment> = {}): MockAppointment => {
+export const createMockAppointment = (
+  overrides: Partial<MockAppointment> = {}
+): MockAppointment => {
   const startTime = faker.date.future()
   const duration = overrides.serviceId ? 60 : faker.helpers.arrayElement([30, 60, 90])
   const endTime = new Date(startTime.getTime() + duration * 60000)
@@ -139,7 +141,11 @@ export const createMockAppointment = (overrides: Partial<MockAppointment> = {}):
 /**
  * Cria múltiplos itens usando a factory fornecida
  */
-export const createMany = <T>(factory: (overrides?: Partial<T>) => T, count: number, overrides?: Partial<T>): T[] => {
+export const createMany = <T>(
+  factory: (overrides?: Partial<T>) => T,
+  count: number,
+  overrides?: Partial<T>
+): T[] => {
   return Array.from({ length: count }, () => factory(overrides))
 }
 

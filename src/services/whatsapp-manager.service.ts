@@ -1,25 +1,21 @@
 /**
  * WhatsApp Manager (Client-Side)
- * 
+ *
  * Cliente leve que enfileira comandos para o WhatsAppWorker via BullMQ.
  * Este módulo NÃO mantém conexões WebSocket - apenas:
- * 
+ *
  * 1. Enfileira jobs para START/STOP/SEND
  * 2. Escuta atualizações de status via Redis Pub/Sub
  * 3. Fornece cache de status das sessões
- * 
+ *
  * Esta arquitetura permite escalar a API horizontalmente enquanto
  * os workers processam as conexões WhatsApp de forma independente.
- * 
+ *
  * @module services/whatsapp-manager.service
  */
 import { logger } from '../lib/logger'
 import { prisma } from '../lib/prisma'
-import {
-    WHATSAPP_SESSIONS_HASH,
-    WHATSAPP_STATUS_CHANNEL,
-    whatsappQueue
-} from '../lib/queues'
+import { WHATSAPP_SESSIONS_HASH, WHATSAPP_STATUS_CHANNEL, whatsappQueue } from '../lib/queues'
 import { redis, subscriber } from '../lib/redis'
 
 // ---------------------------------------------------------------------------
@@ -39,10 +35,10 @@ interface SessionInfo {
 
 export class WhatsAppManager {
   private static instance: WhatsAppManager
-  
+
   /** Cache local de status (atualizado via Pub/Sub) */
   private sessionsCache: Map<string, SessionInfo> = new Map()
-  
+
   /** Flag para evitar múltiplas subscrições */
   private subscribed = false
 
@@ -117,11 +113,11 @@ export class WhatsAppManager {
     }
 
     // 3. Fallback
-    return { 
-      status: 'DISCONNECTED', 
-      qrCode: null, 
-      phoneNumber: null, 
-      sessionName: '' 
+    return {
+      status: 'DISCONNECTED',
+      qrCode: null,
+      phoneNumber: null,
+      sessionName: '',
     }
   }
 
@@ -133,25 +129,25 @@ export class WhatsAppManager {
    * Enfileira comando para iniciar sessão WhatsApp
    */
   async startClient(
-    tenantId: string, 
-    sessionId: string, 
-    sessionName: string, 
+    tenantId: string,
+    sessionId: string,
+    sessionName: string,
     linkedAgentId?: string | null
   ): Promise<void> {
     logger.info({ sessionId, sessionName }, '📤 Enfileirando START_SESSION...')
-    
+
     await whatsappQueue.add(
       'start-session',
-      { 
-        type: 'START_SESSION', 
+      {
+        type: 'START_SESSION',
         tenantId,
-        sessionId, 
-        sessionName, 
-        agentId: linkedAgentId 
+        sessionId,
+        sessionName,
+        agentId: linkedAgentId,
       },
-      { 
+      {
         jobId: `start-${sessionId}`, // Evita duplicação
-        removeOnComplete: true 
+        removeOnComplete: true,
       }
     )
   }
@@ -161,33 +157,29 @@ export class WhatsAppManager {
    */
   async stopClient(sessionId: string): Promise<void> {
     logger.info({ sessionId }, '📤 Enfileirando STOP_SESSION...')
-    
+
     // Remove do cache local imediatamente
     this.sessionsCache.delete(sessionId)
-    
+
     await whatsappQueue.add(
       'stop-session',
       { type: 'STOP_SESSION', sessionId },
-      { 
+      {
         jobId: `stop-${sessionId}`,
-        removeOnComplete: true 
+        removeOnComplete: true,
       }
     )
   }
 
   /**
    * Enfileira mensagem para envio
-   * 
+   *
    * @returns true se enfileirou com sucesso, false se não há sessão disponível
    */
-  async sendTextMessage(
-    tenantId: string, 
-    phone: string, 
-    text: string
-  ): Promise<boolean> {
+  async sendTextMessage(tenantId: string, phone: string, text: string): Promise<boolean> {
     // Busca sessão ativa no banco
-    const session = await prisma.whatsAppSession.findFirst({ 
-      where: { tenantId, status: 'CONNECTED' } 
+    const session = await prisma.whatsAppSession.findFirst({
+      where: { tenantId, status: 'CONNECTED' },
     })
 
     if (!session) {
@@ -196,19 +188,19 @@ export class WhatsAppManager {
     }
 
     logger.info({ phone, sessionId: session.id }, '📤 Enfileirando SEND_MESSAGE...')
-    
+
     await whatsappQueue.add(
       'send-message',
-      { 
-        type: 'SEND_MESSAGE', 
+      {
+        type: 'SEND_MESSAGE',
         tenantId,
-        sessionId: session.id, 
-        phone, 
-        text 
+        sessionId: session.id,
+        phone,
+        text,
       },
       {
         attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 }
+        backoff: { type: 'exponential', delay: 1000 },
       }
     )
 

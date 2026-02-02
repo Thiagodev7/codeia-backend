@@ -1,6 +1,6 @@
 /**
  * Setup Global de Testes
- * 
+ *
  * Configura mocks globais para testes unitários e de integração.
  * Executado antes de cada arquivo de teste.
  */
@@ -15,7 +15,7 @@ const createPrismaMock = () => ({
   $connect: vi.fn(),
   $disconnect: vi.fn(),
   $transaction: vi.fn((fn) => fn(prismaMock)),
-  
+
   tenant: {
     findUnique: vi.fn(),
     findMany: vi.fn(),
@@ -24,7 +24,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   user: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -34,7 +34,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   customer: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -45,7 +45,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   message: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -55,7 +55,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   appointment: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -65,7 +65,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   service: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -75,7 +75,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   agent: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -85,7 +85,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   whatsAppSession: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -95,7 +95,7 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     count: vi.fn(),
   },
-  
+
   tenantSettings: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -105,7 +105,7 @@ const createPrismaMock = () => ({
     upsert: vi.fn(),
     delete: vi.fn(),
   },
-  
+
   businessHour: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -121,7 +121,7 @@ const createPrismaMock = () => ({
 const prismaMock = createPrismaMock()
 
 vi.mock('../lib/prisma', () => ({
-  prisma: prismaMock
+  prisma: prismaMock,
 }))
 
 // ---------------------------------------------------------------------------
@@ -176,7 +176,7 @@ vi.mock('../lib/logger', () => ({
     debug: vi.fn(),
     fatal: vi.fn(),
     trace: vi.fn(),
-  }
+  },
 }))
 
 // ---------------------------------------------------------------------------
@@ -196,4 +196,3 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 export { prismaMock, queueMock, redisMock }
-

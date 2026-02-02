@@ -1,6 +1,6 @@
 /**
  * Utilitários de Paginação
- * 
+ *
  * Fornece schemas Zod e helpers para implementar paginação consistente.
  */
 import { z } from 'zod'
@@ -14,7 +14,7 @@ import { z } from 'zod'
  */
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20)
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 })
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>
@@ -26,15 +26,15 @@ export type PaginationQuery = z.infer<typeof paginationQuerySchema>
 /**
  * Cria schema de resposta paginada para um tipo de dados
  */
-export const paginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) => 
+export const paginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.object({
     data: z.array(itemSchema),
     meta: z.object({
       page: z.number(),
       limit: z.number(),
       total: z.number(),
-      totalPages: z.number()
-    })
+      totalPages: z.number(),
+    }),
   })
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,6 @@ export const buildPaginatedResponse = <T>(
     page,
     limit,
     total,
-    totalPages: Math.ceil(total / limit)
-  }
+    totalPages: Math.ceil(total / limit),
+  },
 })

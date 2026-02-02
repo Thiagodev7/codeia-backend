@@ -1,6 +1,6 @@
 /**
  * Testes Unitários: Errors Lib
- * 
+ *
  * Testa a classe AppError e os factories de erros.
  */
 import { describe, expect, it } from 'vitest'

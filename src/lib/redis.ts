@@ -1,11 +1,11 @@
 /**
  * Configuração de conexão Redis
- * 
+ *
  * Este módulo fornece conexões Redis compartilhadas para:
  * - BullMQ (filas de jobs)
  * - Pub/Sub (notificações em tempo real)
  * - Cache de estado de sessões
- * 
+ *
  * @module lib/redis
  */
 import Redis from 'ioredis'
@@ -28,7 +28,7 @@ export const redis = new Redis(REDIS_URL, {
     const delay = Math.min(times * 200, 5000)
     logger.warn({ attempt: times, delay }, '🔄 Redis: Tentando reconectar...')
     return delay
-  }
+  },
 })
 
 redis.on('connect', () => {

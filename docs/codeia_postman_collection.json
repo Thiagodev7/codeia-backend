@@ -1,0 +1,604 @@
+{
+	"info": {
+		"_postman_id": "c98c809c-9b12-4c79-939d-d0398347443a",
+		"name": "CodeIA Backend API",
+		"description": "Coleção de requisições para a API do CodeIA Backend (v2.0).\n\nPara usar:\n1. Importe esta coleção no Postman.\n2. Crie um Environment no Postman com a variável `baseUrl` definida como `http://localhost:3333`.\n3. Faça login na pasta 'Auth' -> 'Login' para obter o token.\n4. O token será salvo automaticamente na variável de ambiente `token` (se configurado script de teste) ou copie manualmente para o Header da coleção.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "🔐 Auth",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"pm.environment.set(\"token\", jsonData.token);",
+									"pm.environment.set(\"tenantId\", jsonData.user.tenantId);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@empresa.com\",\n    \"password\": \"senha123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"login"
+							]
+						},
+						"description": "Realiza login e salva o token automaticamente no ambiente."
+					},
+					"response": []
+				},
+				{
+					"name": "Register Company",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"companyName\": \"Minha Empresa\",\n    \"document\": \"00000000000\",\n    \"phone\": \"11999999999\",\n    \"adminName\": \"Admin User\",\n    \"email\": \"novo@empresa.com\",\n    \"password\": \"senha123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Me (User Profile)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📅 Appointments",
+			"item": [
+				{
+					"name": "List Appointments (Paginated)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/appointments?page=1&limit=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"appointments"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Appointment",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"customerId\": \"{{customerId}}\",\n    \"title\": \"Consulta Inicial\",\n    \"startTime\": \"2026-02-10T14:00:00.000Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/appointments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"appointments"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Reschedule Appointment",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"newStartTime\": \"2026-02-11T16:00:00.000Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/appointments/:id/reschedule",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"appointments",
+								":id",
+								"reschedule"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Appointment",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/appointments/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"appointments",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "💬 CRM",
+			"item": [
+				{
+					"name": "List Conversations (Paginated)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/crm/conversations?page=1&limit=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"crm",
+								"conversations"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Conversation Messages",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/crm/conversations/:customerId/messages?page=1&limit=50",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"crm",
+								"conversations",
+								":customerId",
+								"messages"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								}
+							],
+							"variable": [
+								{
+									"key": "customerId",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📱 WhatsApp",
+			"item": [
+				{
+					"name": "List Sessions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/whatsapp/sessions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"whatsapp",
+								"sessions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Start Session (QR Code)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/whatsapp/sessions/:sessionId/start",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"whatsapp",
+								"sessions",
+								":sessionId",
+								"start"
+							],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Stop Session",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/whatsapp/sessions/:sessionId/stop",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"whatsapp",
+								"sessions",
+								":sessionId",
+								"stop"
+							],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/whatsapp/sessions/:sessionId/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"whatsapp",
+								"sessions",
+								":sessionId",
+								"status"
+							],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🤖 AI Agents",
+			"item": [
+				{
+					"name": "List Agents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ai/agents",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ai",
+								"agents"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Agent",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Atendente Comercial\",\n    \"slug\": \"comercial\",\n    \"model\": \"gemini-2.0-flash-lite\",\n    \"instructions\": \"Você é um assistente útil.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/agents",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ai",
+								"agents"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Agent",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Atendente Comercial V2\",\n    \"instructions\": \"Instruções atualizadas...\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/agents/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ai",
+								"agents",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "⚙️ Settings",
+			"item": [
+				{
+					"name": "Get Tenant Settings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/settings",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"settings"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Settings",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"businessName\": \"Minha Empresa\",\n    \"primaryColor\": \"#10b981\",\n    \"reminderEnabled\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/settings",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"settings"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Business Hours",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/settings/business-hours",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"settings",
+								"business-hours"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Business Hours",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "[\n    { \"dayOfWeek\": 1, \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"isOpen\": true },\n    { \"dayOfWeek\": 2, \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"isOpen\": true }\n]",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/settings/business-hours",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"settings",
+								"business-hours"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3333",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

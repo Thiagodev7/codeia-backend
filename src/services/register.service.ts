@@ -34,7 +34,7 @@ export class RegisterService {
     // 2. Transação Atômica: Ou cria tudo (Empresa + Admin + Agente), ou nada.
     const result = await prisma.$transaction(async (tx) => {
       const newTenant = await tx.tenant.create({
-        data: { name: data.companyName, document: data.document }
+        data: { name: data.companyName, document: data.document },
       })
 
       const newUser = await tx.user.create({
@@ -44,18 +44,18 @@ export class RegisterService {
           phone: data.phone,
           passwordHash,
           tenantId: newTenant.id,
-          role: 'ADMIN'
-        }
+          role: 'ADMIN',
+        },
       })
-      
+
       // Criação do Agente Padrão (Bootstrap da IA)
       await tx.agent.create({
         data: {
           tenantId: newTenant.id,
-          name: "Assistente Principal",
-          slug: "atendente",
-          instructions: "Você é um assistente útil e amigável da empresa " + data.companyName + "."
-        }
+          name: 'Assistente Principal',
+          slug: 'atendente',
+          instructions: 'Você é um assistente útil e amigável da empresa ' + data.companyName + '.',
+        },
       })
 
       return { tenant: newTenant, user: newUser }

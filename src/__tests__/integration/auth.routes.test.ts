@@ -1,6 +1,6 @@
 /**
  * Testes de Integração: Auth Routes
- * 
+ *
  * Testa o fluxo completo de autenticação via HTTP.
  */
 import jwt from '@fastify/jwt'
@@ -13,14 +13,14 @@ import { authRoutes } from '../../routes/auth.routes'
 vi.mock('../../lib/prisma', () => ({
   prisma: {
     user: {
-      findUnique: vi.fn()
-    }
-  }
+      findUnique: vi.fn(),
+    },
+  },
 }))
 
 // Mock do bcrypt
 vi.mock('bcryptjs', () => ({
-  compare: vi.fn()
+  compare: vi.fn(),
 }))
 
 import * as bcrypt from 'bcryptjs'
@@ -36,19 +36,19 @@ describe('Auth Routes - Integration', () => {
   beforeEach(async () => {
     // Criar app Fastify para testes
     app = Fastify({ logger: false })
-    
+
     // Configurar Zod validators (obrigatório para fastify-type-provider-zod)
     app.setValidatorCompiler(validatorCompiler)
     app.setSerializerCompiler(serializerCompiler)
-    
+
     // Registrar plugins necessários
     await app.register(jwt, { secret: 'test-jwt-secret' })
-    
+
     // Registrar routes com prefixo /auth
     await app.register(authRoutes, { prefix: '/auth' })
-    
+
     await app.ready()
-    
+
     vi.clearAllMocks()
   })
 
@@ -62,13 +62,13 @@ describe('Auth Routes - Integration', () => {
   describe('POST /auth/login', () => {
     const validCredentials = {
       email: 'test@example.com',
-      password: 'validPassword123'
+      password: 'validPassword123',
     }
 
     it('should return 200 and token for valid credentials', async () => {
       const mockUser = createMockUser({
         email: validCredentials.email,
-        passwordHash: 'hashedPassword'
+        passwordHash: 'hashedPassword',
       })
 
       mockedPrisma.user.findUnique.mockResolvedValue(mockUser as any)
@@ -77,11 +77,11 @@ describe('Auth Routes - Integration', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: validCredentials
+        payload: validCredentials,
       })
 
       expect(response.statusCode).toBe(200)
-      
+
       const body = JSON.parse(response.body)
       expect(body.token).toBeDefined()
       expect(body.user).toBeDefined()
@@ -94,7 +94,7 @@ describe('Auth Routes - Integration', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: validCredentials
+        payload: validCredentials,
       })
 
       expect(response.statusCode).toBe(401)
@@ -102,14 +102,14 @@ describe('Auth Routes - Integration', () => {
 
     it('should return 401 for wrong password', async () => {
       const mockUser = createMockUser({ email: validCredentials.email })
-      
+
       mockedPrisma.user.findUnique.mockResolvedValue(mockUser as any)
       mockedBcrypt.compare.mockResolvedValue(false as never)
 
       const response = await app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: validCredentials
+        payload: validCredentials,
       })
 
       expect(response.statusCode).toBe(401)
@@ -119,7 +119,7 @@ describe('Auth Routes - Integration', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: { password: 'somePassword' }
+        payload: { password: 'somePassword' },
       })
 
       expect(response.statusCode).toBe(400)
@@ -129,7 +129,7 @@ describe('Auth Routes - Integration', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: { email: 'not-an-email', password: 'validPassword' }
+        payload: { email: 'not-an-email', password: 'validPassword' },
       })
 
       expect(response.statusCode).toBe(400)

@@ -12,15 +12,14 @@ interface UpdateTenantInput {
  * Manipula dados da própria conta/organização.
  */
 export class TenantService {
-  
   async getDetails(tenantId: string) {
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
       include: {
         _count: {
-          select: { users: true, customers: true, messages: true }
-        }
-      }
+          select: { users: true, customers: true, messages: true },
+        },
+      },
     })
 
     if (!tenant) throw Errors.NotFound('Empresa não encontrada.')
@@ -30,7 +29,7 @@ export class TenantService {
   async update(tenantId: string, data: UpdateTenantInput) {
     return prisma.tenant.update({
       where: { id: tenantId },
-      data
+      data,
     })
   }
 
@@ -38,7 +37,7 @@ export class TenantService {
     // Soft Delete: Mantemos os dados por questões legais/segurança, apenas inativamos.
     return prisma.tenant.update({
       where: { id: tenantId },
-      data: { isActive: false }
+      data: { isActive: false },
     })
   }
 }

@@ -18,23 +18,22 @@ interface CreateAppointmentDTO {
  * Núcleo da lógica de calendário, conflitos e validações de data.
  */
 export class AppointmentService {
-  
   // --- LISTAR TUDO (Dashboard) com Paginação ---
   async listByTenant(tenantId: string, skip = 0, take = 20) {
     const [data, total] = await Promise.all([
       prisma.appointment.findMany({
         where: { tenantId },
-        include: { 
+        include: {
           customer: { select: { id: true, name: true, phone: true } },
-          service: { select: { id: true, name: true, price: true } }
+          service: { select: { id: true, name: true, price: true } },
         },
         orderBy: { startTime: 'desc' },
         skip,
-        take
+        take,
       }),
-      prisma.appointment.count({ where: { tenantId } })
+      prisma.appointment.count({ where: { tenantId } }),
     ])
-    
+
     return { data, total }
   }
 
@@ -46,11 +45,11 @@ export class AppointmentService {
         customerId,
         status: 'SCHEDULED',
         startTime: {
-          gte: subHours(new Date(), 2) 
-        }
+          gte: subHours(new Date(), 2),
+        },
       },
       orderBy: { startTime: 'asc' },
-      include: { service: true }
+      include: { service: true },
     })
   }
 
@@ -61,20 +60,26 @@ export class AppointmentService {
     if (customerId) whereCondition.customerId = customerId
 
     const appointment = await prisma.appointment.findFirst({
-      where: whereCondition
+      where: whereCondition,
     })
 
     if (!appointment) throw Errors.NotFound('Agendamento não encontrado.')
-    if (appointment.status === 'CANCELED') throw Errors.BadRequest('Este agendamento já foi cancelado.')
+    if (appointment.status === 'CANCELED')
+      throw Errors.BadRequest('Este agendamento já foi cancelado.')
 
     return prisma.appointment.update({
       where: { id: appointmentId },
-      data: { status: 'CANCELED' }
+      data: { status: 'CANCELED' },
     })
   }
 
   // --- REMARCAR ---
-  async rescheduleAppointment(tenantId: string, appointmentId: string, newStartTime: Date, customerId?: string) {
+  async rescheduleAppointment(
+    tenantId: string,
+    appointmentId: string,
+    newStartTime: Date,
+    customerId?: string
+  ) {
     const startTime = startOfMinute(newStartTime)
     const now = new Date()
 
@@ -89,11 +94,11 @@ export class AppointmentService {
 
       const original = await tx.appointment.findFirst({
         where: whereCondition,
-        include: { service: true }
+        include: { service: true },
       })
 
       if (!original) throw Errors.NotFound('Agendamento não encontrado.')
-      
+
       const duration = original.service ? original.service.duration : 60
       const endTime = addMinutes(startTime, duration)
 
@@ -103,11 +108,8 @@ export class AppointmentService {
           tenantId,
           status: 'SCHEDULED',
           id: { not: appointmentId },
-          AND: [
-            { startTime: { lt: endTime } },
-            { endTime: { gt: startTime } }
-          ]
-        }
+          AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
+        },
       })
 
       if (conflict) {
@@ -119,11 +121,14 @@ export class AppointmentService {
         data: {
           startTime,
           endTime,
-          description: original.description ? original.description + " (Reagendado)" : "Reagendado"
-        }
+          description: original.description ? original.description + ' (Reagendado)' : 'Reagendado',
+        },
       })
 
-      logger.info({ id: appointmentId, newDate: startTime }, '🔄 Agendamento remarcado com sucesso.')
+      logger.info(
+        { id: appointmentId, newDate: startTime },
+        '🔄 Agendamento remarcado com sucesso.'
+      )
       return updated
     })
   }
@@ -138,18 +143,18 @@ export class AppointmentService {
     }
 
     return prisma.$transaction(async (tx) => {
-      let duration = 60; 
-      let finalTitle = data.title;
-      let serviceIdToSave = null;
+      let duration = 60
+      let finalTitle = data.title
+      let serviceIdToSave = null
 
       if (data.serviceId) {
         const service = await tx.service.findFirst({
-          where: { id: data.serviceId, tenantId: data.tenantId, isActive: true }
+          where: { id: data.serviceId, tenantId: data.tenantId, isActive: true },
         })
         if (service) {
-          duration = service.duration;
-          finalTitle = service.name;
-          serviceIdToSave = service.id;
+          duration = service.duration
+          finalTitle = service.name
+          serviceIdToSave = service.id
         }
       }
 
@@ -159,11 +164,8 @@ export class AppointmentService {
         where: {
           tenantId: data.tenantId,
           status: 'SCHEDULED',
-          AND: [
-            { startTime: { lt: endTime } },
-            { endTime: { gt: startTime } }
-          ]
-        }
+          AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
+        },
       })
 
       if (conflict) {
@@ -174,7 +176,7 @@ export class AppointmentService {
       if (data.clientName) {
         await tx.customer.update({
           where: { id: data.customerId },
-          data: { name: data.clientName }
+          data: { name: data.clientName },
         })
       }
 
@@ -184,12 +186,14 @@ export class AppointmentService {
           customerId: data.customerId,
           serviceId: serviceIdToSave,
           title: finalTitle,
-          description: serviceIdToSave ? `Via IA (${duration}min)` : `Personalizado (${duration}min)`,
+          description: serviceIdToSave
+            ? `Via IA (${duration}min)`
+            : `Personalizado (${duration}min)`,
           startTime,
           endTime,
-          status: 'SCHEDULED'
+          status: 'SCHEDULED',
         },
-        include: { customer: true, service: true }
+        include: { customer: true, service: true },
       })
 
       logger.info({ id: appointment.id, time: startTime }, '✅ Novo agendamento criado.')

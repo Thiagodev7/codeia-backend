@@ -1,6 +1,6 @@
 /**
  * Helper para Testes de Integração
- * 
+ *
  * Configura o Fastify app para testes com mocks necessários.
  */
 import jwt from '@fastify/jwt'
@@ -16,10 +16,10 @@ import { vi } from 'vitest'
  */
 export const createTestApp = async (): Promise<FastifyInstance> => {
   const app = Fastify({ logger: false })
-  
+
   // JWT plugin
   await app.register(jwt, { secret: 'test-secret' })
-  
+
   return app
 }
 
@@ -31,14 +31,14 @@ export const createTestApp = async (): Promise<FastifyInstance> => {
  * Gera um token JWT válido para testes
  */
 export const generateTestToken = (
-  app: FastifyInstance, 
+  app: FastifyInstance,
   payload: { id: string; tenantId: string; email: string; role?: string }
 ): string => {
   return app.jwt.sign({
     id: payload.id,
     tenantId: payload.tenantId,
     email: payload.email,
-    role: payload.role || 'ADMIN'
+    role: payload.role || 'ADMIN',
   })
 }
 
@@ -46,7 +46,7 @@ export const generateTestToken = (
  * Cria headers com Authorization Bearer token
  */
 export const authHeaders = (token: string) => ({
-  Authorization: `Bearer ${token}`
+  Authorization: `Bearer ${token}`,
 })
 
 // ---------------------------------------------------------------------------
@@ -61,24 +61,24 @@ export const createIntegrationPrismaMock = () => ({
     findUnique: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
-    update: vi.fn()
+    update: vi.fn(),
   },
   appointment: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    count: vi.fn()
+    count: vi.fn(),
   },
   customer: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
-    findUnique: vi.fn()
+    findUnique: vi.fn(),
   },
   message: {
     findMany: vi.fn(),
-    count: vi.fn()
+    count: vi.fn(),
   },
   $queryRaw: vi.fn(),
-  $transaction: vi.fn()
+  $transaction: vi.fn(),
 })

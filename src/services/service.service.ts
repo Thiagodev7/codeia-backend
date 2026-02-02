@@ -21,14 +21,13 @@ interface UpdateServiceInput {
  * Responsável por gerenciar o catálogo de serviços que a empresa oferece.
  */
 export class ServiceService {
-  
   /**
    * Lista todos os serviços ativos e inativos de uma empresa
    */
   async list(tenantId: string) {
     return prisma.service.findMany({
       where: { tenantId },
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
     })
   }
 
@@ -39,8 +38,8 @@ export class ServiceService {
     return prisma.service.create({
       data: {
         tenantId,
-        ...data
-      }
+        ...data,
+      },
     })
   }
 
@@ -50,7 +49,7 @@ export class ServiceService {
    */
   async update(tenantId: string, serviceId: string, data: UpdateServiceInput) {
     const service = await prisma.service.findFirst({
-      where: { id: serviceId, tenantId }
+      where: { id: serviceId, tenantId },
     })
 
     if (!service) {
@@ -59,7 +58,7 @@ export class ServiceService {
 
     return prisma.service.update({
       where: { id: serviceId },
-      data
+      data,
     })
   }
 
@@ -68,7 +67,7 @@ export class ServiceService {
    */
   async delete(tenantId: string, serviceId: string) {
     const service = await prisma.service.findFirst({
-      where: { id: serviceId, tenantId }
+      where: { id: serviceId, tenantId },
     })
 
     if (!service) {
@@ -76,7 +75,7 @@ export class ServiceService {
     }
 
     return prisma.service.delete({
-      where: { id: serviceId }
+      where: { id: serviceId },
     })
   }
 }

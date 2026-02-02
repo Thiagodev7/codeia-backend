@@ -12,16 +12,16 @@ if (!fs.existsSync(logDir)) {
 // Configuração de Redação (Segurança - Ocultar dados sensíveis)
 const redactOptions = {
   paths: [
-    'password', 
-    'passwordHash', 
-    'token', 
-    'authorization', 
-    'qrCode', 
+    'password',
+    'passwordHash',
+    'token',
+    'authorization',
+    'qrCode',
     'buffer',
-    '*.password', 
-    '*.token'
+    '*.password',
+    '*.token',
   ],
-  remove: true
+  remove: true,
 }
 
 // Configuração dos Transportes (Destinos dos logs)
@@ -36,8 +36,8 @@ const transport = pino.transport({
         translateTime: 'SYS:standard', // Horário legível
         ignore: 'pid,hostname', // Remove poluição visual
         // Formato customizado para ver o Contexto no console
-        messageFormat: '{requestId} | {msg} \x1b[30m[{tenantId}]\x1b[0m' 
-      }
+        messageFormat: '{requestId} | {msg} \x1b[30m[{tenantId}]\x1b[0m',
+      },
     },
     // 2. Arquivo Persistente (Para Auditoria/Histórico)
     {
@@ -45,20 +45,23 @@ const transport = pino.transport({
       level: 'info',
       options: {
         destination: path.join(logDir, 'app.log'),
-        mkdir: true // Cria a pasta se não existir (redundância)
-      }
-    }
-  ]
+        mkdir: true, // Cria a pasta se não existir (redundância)
+      },
+    },
+  ],
 })
 
-const baseLogger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  redact: redactOptions,
-  base: {
-    pid: process.pid,
-    env: process.env.NODE_ENV
-  }
-}, transport) // <--- Injetamos os transportes aqui
+const baseLogger = pino(
+  {
+    level: process.env.LOG_LEVEL || 'info',
+    redact: redactOptions,
+    base: {
+      pid: process.pid,
+      env: process.env.NODE_ENV,
+    },
+  },
+  transport
+) // <--- Injetamos os transportes aqui
 
 // Proxy para injetar contexto (Mantemos igual à versão anterior)
 export const logger = new Proxy(baseLogger, {
@@ -76,5 +79,5 @@ export const logger = new Proxy(baseLogger, {
       }
     }
     return Reflect.get(target, property, receiver)
-  }
+  },
 })

@@ -1,9 +1,9 @@
 /**
  * Definição de Filas BullMQ
- * 
+ *
  * Centraliza a criação de filas e tipos de jobs para processamento assíncrono.
  * A arquitetura de filas permite escalar workers independentemente da API.
- * 
+ *
  * @module lib/queues
  */
 import { Queue } from 'bullmq'
@@ -42,7 +42,7 @@ export type WhatsAppJobData = StartSessionJob | StopSessionJob | SendMessageJob
 
 /**
  * Fila para comandos do WhatsApp
- * 
+ *
  * Jobs processados pelo WhatsAppWorker:
  * - START_SESSION: Inicia nova conexão Baileys
  * - STOP_SESSION: Encerra conexão
@@ -52,13 +52,13 @@ export const whatsappQueue = new Queue<WhatsAppJobData>('whatsapp', {
   connection: redis,
   defaultJobOptions: {
     removeOnComplete: 100, // Mantém últimos 100 jobs completos
-    removeOnFail: 500,     // Mantém últimos 500 jobs com falha para debug
-    attempts: 3,           // Tenta 3 vezes antes de falhar
+    removeOnFail: 500, // Mantém últimos 500 jobs com falha para debug
+    attempts: 3, // Tenta 3 vezes antes de falhar
     backoff: {
       type: 'exponential',
-      delay: 1000
-    }
-  }
+      delay: 1000,
+    },
+  },
 })
 
 // ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ export interface ReminderJobData {
 
 /**
  * Fila para jobs de lembrete
- * 
+ *
  * Usa cron job para verificar agendamentos pendentes a cada minuto.
  * Processa apenas uma vez mesmo com múltiplas instâncias.
  */
@@ -90,6 +90,6 @@ export const reminderQueue = new Queue<ReminderJobData>('reminder', {
   connection: redis,
   defaultJobOptions: {
     removeOnComplete: 50,
-    removeOnFail: 100
-  }
+    removeOnFail: 100,
+  },
 })

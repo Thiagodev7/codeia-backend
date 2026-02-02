@@ -10,17 +10,16 @@ interface BusinessHourInput {
 }
 
 export class SettingsService {
-  
   async getTenantSettings(tenantId: string) {
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
       create: { tenantId },
-      update: {}
+      update: {},
     })
 
     const businessHours = await prisma.businessHour.findMany({
       where: { tenantId },
-      orderBy: { dayOfWeek: 'asc' }
+      orderBy: { dayOfWeek: 'asc' },
     })
 
     return { ...settings, businessHours }
@@ -34,7 +33,7 @@ export class SettingsService {
     if (settingsData.reminderEnabled === true) {
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { plan: true }
+        select: { plan: true },
       })
 
       const plan = tenant?.plan?.toUpperCase() || 'FREE'
@@ -43,7 +42,9 @@ export class SettingsService {
 
       if (!allowedPlans.includes(plan)) {
         // Bloqueia a ação e retorna erro 403
-        throw Errors.Forbidden('Recurso exclusivo: Lembretes automáticos disponíveis apenas a partir do plano SECONDARY.')
+        throw Errors.Forbidden(
+          'Recurso exclusivo: Lembretes automáticos disponíveis apenas a partir do plano SECONDARY.'
+        )
       }
     }
 
@@ -51,29 +52,29 @@ export class SettingsService {
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
       create: { tenantId, ...settingsData },
-      update: settingsData
+      update: settingsData,
     })
 
     // 2. Atualiza Horários
     if (businessHours && Array.isArray(businessHours)) {
       await prisma.$transaction(
-        businessHours.map((hour: BusinessHourInput) => 
+        businessHours.map((hour: BusinessHourInput) =>
           prisma.businessHour.upsert({
-            where: { 
-              tenantId_dayOfWeek: { tenantId, dayOfWeek: hour.dayOfWeek } 
+            where: {
+              tenantId_dayOfWeek: { tenantId, dayOfWeek: hour.dayOfWeek },
             },
             create: {
               tenantId,
               dayOfWeek: hour.dayOfWeek,
               startTime: hour.startTime,
               endTime: hour.endTime,
-              isOpen: hour.isOpen
+              isOpen: hour.isOpen,
             },
             update: {
               startTime: hour.startTime,
               endTime: hour.endTime,
-              isOpen: hour.isOpen
-            }
+              isOpen: hour.isOpen,
+            },
           })
         )
       )
@@ -87,7 +88,7 @@ export class SettingsService {
     return prisma.userSettings.upsert({
       where: { userId },
       create: { userId },
-      update: {}
+      update: {},
     })
   }
 
@@ -95,7 +96,7 @@ export class SettingsService {
     return prisma.userSettings.upsert({
       where: { userId },
       create: { userId, ...data },
-      update: data
+      update: data,
     })
   }
 }
