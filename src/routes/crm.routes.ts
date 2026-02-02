@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
 import { Errors } from '../lib/errors'
+import { prisma } from '../lib/prisma'
 
 /**
  * Rotas de CRM (Monitoramento)
@@ -38,33 +38,47 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req) => {
     const { tenantId } = req.user as { tenantId: string }
 
-    // Busca clientes que possuem mensagens
-    const customers = await prisma.customer.findMany({
-      where: { 
-        tenantId,
-        messages: { some: {} } 
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
-    })
+    // Query otimizada: ordena por última mensagem diretamente no banco
+    // Evita ordenação em memória que não escala com muitos clientes
+    const conversations = await prisma.$queryRaw<Array<{
+      id: string
+      name: string | null
+      phone: string
+      lastMessage: string | null
+      lastMessageAt: Date | null
+    }>>`
+      SELECT 
+        c.id,
+        c.name,
+        c.phone,
+        (
+          SELECT m.content 
+          FROM "Message" m 
+          WHERE m."customerId" = c.id 
+          ORDER BY m."createdAt" DESC 
+          LIMIT 1
+        ) as "lastMessage",
+        (
+          SELECT m."createdAt" 
+          FROM "Message" m 
+          WHERE m."customerId" = c.id 
+          ORDER BY m."createdAt" DESC 
+          LIMIT 1
+        ) as "lastMessageAt"
+      FROM "Customer" c
+      WHERE c."tenantId" = ${tenantId}
+        AND EXISTS (
+          SELECT 1 FROM "Message" m WHERE m."customerId" = c.id
+        )
+      ORDER BY "lastMessageAt" DESC NULLS LAST
+    `
 
-    // Ordenação em memória: Clientes com mensagens mais recentes primeiro
-    const sorted = customers.sort((a, b) => {
-      const dateA = a.messages[0]?.createdAt.getTime() || 0
-      const dateB = b.messages[0]?.createdAt.getTime() || 0
-      return dateB - dateA
-    })
-
-    return sorted.map(c => ({
+    return conversations.map(c => ({
       id: c.id,
       name: c.name || 'Desconhecido',
       phone: c.phone,
-      lastMessage: c.messages[0]?.content || '',
-      updatedAt: c.messages[0]?.createdAt.toISOString() || new Date().toISOString()
+      lastMessage: c.lastMessage || '',
+      updatedAt: c.lastMessageAt?.toISOString() || new Date().toISOString()
     }))
   })
 
