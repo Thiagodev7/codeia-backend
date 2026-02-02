@@ -116,6 +116,16 @@ const createPrismaMock = () => ({
     delete: vi.fn(),
     deleteMany: vi.fn(),
   },
+
+  userSettings: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+  },
 })
 
 const prismaMock = createPrismaMock()
