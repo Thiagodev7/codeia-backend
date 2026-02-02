@@ -59,9 +59,9 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
     // Conta total de clientes com mensagens
     const totalResult = await prisma.$queryRaw<[{ count: bigint }]>`
       SELECT COUNT(*)::int as count
-      FROM "Customer" c
+      FROM "customers" c
       WHERE c."tenantId" = ${tenantId}
-        AND EXISTS (SELECT 1 FROM "Message" m WHERE m."customerId" = c.id)
+        AND EXISTS (SELECT 1 FROM "messages" m WHERE m."customerId" = c.id)
     `
     const total = Number(totalResult[0]?.count || 0)
 
@@ -79,22 +79,22 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
         c.phone,
         (
           SELECT m.content 
-          FROM "Message" m 
+          FROM "messages" m 
           WHERE m."customerId" = c.id 
           ORDER BY m."createdAt" DESC 
           LIMIT 1
         ) as "lastMessage",
         (
           SELECT m."createdAt" 
-          FROM "Message" m 
+          FROM "messages" m 
           WHERE m."customerId" = c.id 
           ORDER BY m."createdAt" DESC 
           LIMIT 1
         ) as "lastMessageAt"
-      FROM "Customer" c
+      FROM "customers" c
       WHERE c."tenantId" = ${tenantId}
         AND EXISTS (
-          SELECT 1 FROM "Message" m WHERE m."customerId" = c.id
+          SELECT 1 FROM "messages" m WHERE m."customerId" = c.id
         )
       ORDER BY "lastMessageAt" DESC NULLS LAST
       LIMIT ${limit} OFFSET ${skip}
