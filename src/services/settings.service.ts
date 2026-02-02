@@ -9,7 +9,40 @@ interface BusinessHourInput {
   isOpen: boolean
 }
 
+/**
+ * Service de Configurações
+ *
+ * Gerencia configurações de tenant (negócio) e usuários individuais.
+ * Inclui horários de funcionamento, tema, notificações e lembretes.
+ *
+ * @remarks
+ * - Lembretes são exclusivos para planos pagos (feature gating)
+ * - Configurações são criadas automaticamente se não existirem (upsert)
+ * - BusinessHours suportam configuração por dia da semana
+ *
+ * @example
+ * ```typescript
+ * const service = new SettingsService()
+ * const settings = await service.getTenantSettings('tenant-123')
+ * ```
+ */
 export class SettingsService {
+  /**
+   * Obtém configurações do tenant
+   *
+   * @param tenantId - ID do tenant
+   * @returns Configurações do tenant com horários de funcionamento
+   *
+   * @remarks
+   * - Cria registro automaticamente se não existir
+   * - Retorna businessHours ordenados por dia da semana
+   *
+   * @example
+   * ```typescript
+   * const settings = await service.getTenantSettings('tenant-123')
+   * // { reminderEnabled: true, businessHours: [...] }
+   * ```
+   */
   async getTenantSettings(tenantId: string) {
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
@@ -25,6 +58,30 @@ export class SettingsService {
     return { ...settings, businessHours }
   }
 
+  /**
+   * Atualiza configurações do tenant
+   *
+   * @param tenantId - ID do tenant
+   * @param data - Dados a atualizar (settings + businessHours)
+   * @returns Configurações atualizadas com horários
+   * @throws {AppError} Forbidden se tentar ativar reminder no plano FREE
+   *
+   * @remarks
+   * - Feature gating: reminder requer plano pago (SECONDARY, THIRD, UNLIMITED)
+   * - BusinessHours são recriados completamente (deleteMany + create)
+   * - Operação em transação para consistência
+   *
+   * @example
+   * ```typescript
+   * await service.updateTenantSettings('tenant-123', {
+   *   primaryColor: '#FF0000',
+   *   reminderEnabled: true,
+   *   businessHours: [
+   *     { dayOfWeek: 1, startTime: '09:00', endTime: '18:00', isOpen: true }
+   *   ]
+   * })
+   * ```
+   */
   async updateTenantSettings(
     tenantId: string,
     data: Partial<{

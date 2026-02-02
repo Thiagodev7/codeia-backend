@@ -15,10 +15,42 @@ interface CreateAppointmentDTO {
 
 /**
  * Service de Agendamento
+ *
  * Núcleo da lógica de calendário, conflitos e validações de data.
+ * Responsável por criar, listar, cancelar e reagendar compromissos.
+ *
+ * @remarks
+ * - Valida horários de funcionamento do negócio
+ * - Previne conflitos de agendamento
+ * - Suporta duração personalizada por serviço
+ * - Integrado com IA para agendamento via WhatsApp
+ *
+ * @example
+ * ```typescript
+ * const service = new AppointmentService()
+ * const appointment = await service.createAppointment({
+ *   tenantId: 'tenant-123',
+ *   customerId: 'customer-456',
+ *   title: 'Corte de cabelo',
+ *   startTime: new Date('2026-02-03T14:00:00')
+ * })
+ * ```
  */
 export class AppointmentService {
-  // --- LISTAR TUDO (Dashboard) com Paginação ---
+  /**
+   * Lista todos os agendamentos de um tenant com paginação
+   *
+   * @param tenantId - ID do tenant
+   * @param skip - Número de registros a pular (default: 0)
+   * @param take - Número de registros a retornar (default: 20)
+   * @returns Objeto com array de agendamentos e total de registros
+   *
+   * @example
+   * ```typescript
+   * const result = await service.listByTenant('tenant-123', 0, 10)
+   * // { data: [...], total: 45 }
+   * ```
+   */
   async listByTenant(tenantId: string, skip = 0, take = 20) {
     const [data, total] = await Promise.all([
       prisma.appointment.findMany({
@@ -37,7 +69,24 @@ export class AppointmentService {
     return { data, total }
   }
 
-  // --- LISTAR (Cliente/IA) ---
+  /**
+   * Lista próximos agendamentos de um cliente específico
+   *
+   * @param tenantId - ID do tenant
+   * @param customerId - ID do cliente
+   * @returns Array de agendamentos futuros ordenados por data
+   *
+   * @remarks
+   * - Retorna apenas agendamentos com status SCHEDULED
+   * - Inclui agendamentos das últimas 2 horas (tolerância)
+   * - Ordenado por data crescente
+   *
+   * @example
+   * ```typescript
+   * const upcoming = await service.listUpcoming('tenant-123', 'customer-456')
+   * // [{ id, title, startTime, service: {...} }]
+   * ```
+   */
   async listUpcoming(tenantId: string, customerId: string) {
     return prisma.appointment.findMany({
       where: {
@@ -53,7 +102,28 @@ export class AppointmentService {
     })
   }
 
-  // --- CANCELAR ---
+  /**
+   * Cancela um agendamento existente
+   *
+   * @param tenantId - ID do tenant
+   * @param customerId - ID do cliente (opcional para admin)
+   * @param appointmentId - ID do agendamento
+   * @throws {AppError} NotFound se agendamento não existir
+   * @throws {AppError} BadRequest se agendamento já estiver cancelado
+   *
+   * @remarks
+   * - Se customerId for undefined, permite cancelamento por admin
+   * - Valida que agendamento pertence ao tenant (segurança)
+   *
+   * @example
+   * ```typescript
+   * // Cliente cancelando
+   * await service.cancelAppointment('tenant-123', 'customer-456', 'appt-789')
+   *
+   * // Admin cancelando (customerId undefined)
+   * await service.cancelAppointment('tenant-123', undefined, 'appt-789')
+   * ```
+   */
   async cancelAppointment(tenantId: string, customerId: string, appointmentId: string) {
     // Busca flexível: Se customerId vier undefined (Admin), ignora o filtro de customer
     const whereCondition: { id: string; tenantId: string; customerId?: string } = {
@@ -139,7 +209,33 @@ export class AppointmentService {
     })
   }
 
-  // --- CRIAR ---
+  /**
+   * Cria um novo agendamento
+   *
+   * @param data - Dados do agendamento a criar
+   * @returns Agendamento criado com ID
+   * @throws {AppError} BadRequest se data estiver no passado
+   * @throws {AppError} Conflict se horário já estiver ocupado
+   *
+   * @remarks
+   * - Valida que startTime não está no passado
+   * - Verifica conflitos de horário (±30min ou duração do serviço)
+   * - Se serviceId for fornecido, usa a duração configurada do serviço
+   * - Cria registro de Customer automaticamente se não existir
+   *
+   * @example
+   * ```typescript
+   * const appointment = await service.createAppointment({
+   *   tenantId: 'tenant-123',
+   *   customerId: 'customer-456',
+   *   serviceId: 'service-789', // Opcional
+   *   title: 'Corte de cabelo',
+   *   clientName: 'João Silva',
+   *   clientPhone: '11999999999',
+   *   startTime: new Date('2026-02-03T14:00:00')
+   * })
+   * ```
+   */
   async createAppointment(data: CreateAppointmentDTO) {
     const startTime = startOfMinute(data.startTime)
     const now = new Date()
