@@ -10,22 +10,22 @@ datasource db {
 }
 
 model Tenant {
-  id            String   @id @default(uuid())
-  name          String
-  document      String   @unique
-  plan          String   @default("FREE")
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  document  String   @unique
+  plan      String   @default("FREE")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users         User[]
-  agents        Agent[]
-  customers     Customer[]
-  waSessions    WhatsAppSession[]
-  messages      Message[]
-  appointments  Appointment[]
-  services      Service[]
-  
+  users        User[]
+  agents       Agent[]
+  customers    Customer[]
+  waSessions   WhatsAppSession[]
+  messages     Message[]
+  appointments Appointment[]
+  services     Service[]
+
   settings      TenantSettings?
   businessHours BusinessHour[] // ✅ Novo Relacionamento
 
@@ -36,164 +36,181 @@ model Tenant {
 // (Copie os models intermediários do seu arquivo original se necessário, estou focando nas mudanças)
 
 model User {
-  id            String   @id @default(uuid())
-  tenantId      String
-  name          String
-  email         String   @unique
-  phone         String?
-  passwordHash  String
-  role          String   @default("ADMIN")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  settings      UserSettings?
+  id           String        @id @default(uuid())
+  tenantId     String
+  name         String
+  email        String        @unique
+  phone        String?
+  passwordHash String
+  role         String        @default("ADMIN")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  settings     UserSettings?
+
+  @@index([tenantId])
   @@map("users")
 }
 
 model Agent {
-  id            String   @id @default(uuid())
-  tenantId      String
-  name          String
-  slug          String
-  model         String   @default("gemini-2.0-flash-lite")
-  instructions  String   @db.Text
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  waSessions    WhatsAppSession[]
+  id           String            @id @default(uuid())
+  tenantId     String
+  name         String
+  slug         String
+  model        String            @default("gemini-2.0-flash-lite")
+  instructions String            @db.Text
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  tenant       Tenant            @relation(fields: [tenantId], references: [id])
+  waSessions   WhatsAppSession[]
+
   @@unique([tenantId, slug])
   @@map("agents")
 }
 
 model WhatsAppSession {
-  id            String   @id @default(uuid())
-  tenantId      String
-  sessionName   String   @default("Principal")
-  status        String   @default("DISCONNECTED")
-  authKeys      WhatsAppAuthKey[]
-  agentId       String?
-  agent         Agent?   @relation(fields: [agentId], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String            @id @default(uuid())
+  tenantId    String
+  sessionName String            @default("Principal")
+  status      String            @default("DISCONNECTED")
+  authKeys    WhatsAppAuthKey[]
+  agentId     String?
+  agent       Agent?            @relation(fields: [agentId], references: [id])
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([tenantId, status])
   @@map("whatsapp_sessions")
 }
 
 model WhatsAppAuthKey {
-  id          String   @id @default(uuid())
-  sessionId   String
-  keyId       String   
-  type        String   
-  value       Json    
-  session     WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id        String          @id @default(uuid())
+  sessionId String
+  keyId     String
+  type      String
+  value     Json
+  session   WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
   @@unique([sessionId, keyId])
   @@map("whatsapp_auth_keys")
 }
 
 model Customer {
-  id            String   @id @default(uuid())
-  tenantId      String
-  phone         String
-  name          String?
-  createdAt     DateTime @default(now())
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  messages      Message[]
-  appointments  Appointment[]
+  id           String        @id @default(uuid())
+  tenantId     String
+  phone        String
+  name         String?
+  createdAt    DateTime      @default(now())
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  messages     Message[]
+  appointments Appointment[]
+
   @@unique([tenantId, phone])
   @@map("customers")
 }
 
 model Message {
-  id            String   @id @default(uuid())
-  tenantId      String
-  customerId    String
-  role          String   
-  content       String   @db.Text
-  createdAt     DateTime @default(now())
-  customer      Customer @relation(fields: [customerId], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  id         String   @id @default(uuid())
+  tenantId   String
+  customerId String
+  role       String
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+  customer   Customer @relation(fields: [customerId], references: [id])
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([customerId, createdAt(sort: Desc)])
+  @@index([tenantId])
   @@map("messages")
 }
 
 model Service {
-  id            String   @id @default(uuid())
-  tenantId      String
-  name          String   
-  description   String?
-  price         Decimal  @default(0.0) 
-  duration      Int      
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  appointments  Appointment[]
+  id           String        @id @default(uuid())
+  tenantId     String
+  name         String
+  description  String?
+  price        Decimal       @default(0.0)
+  duration     Int
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
+
+  @@index([tenantId, isActive])
   @@map("services")
 }
 
 model Appointment {
-  id            String   @id @default(uuid())
-  tenantId      String
-  customerId    String
-  serviceId     String?
-  title         String
-  description   String?
-  startTime     DateTime
-  endTime       DateTime
-  status        String   @default("SCHEDULED")
-  reminderSent  Boolean  @default(false)
-  customer      Customer @relation(fields: [customerId], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  service       Service? @relation(fields: [serviceId], references: [id])
+  id           String   @id @default(uuid())
+  tenantId     String
+  customerId   String
+  serviceId    String?
+  title        String
+  description  String?
+  startTime    DateTime
+  endTime      DateTime
+  status       String   @default("SCHEDULED")
+  reminderSent Boolean  @default(false)
+  customer     Customer @relation(fields: [customerId], references: [id])
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  service      Service? @relation(fields: [serviceId], references: [id])
+
+  @@index([tenantId, status, startTime])
+  @@index([tenantId, reminderSent, startTime])
   @@map("appointments")
 }
 
 // --- CONFIGURAÇÕES ---
 
 model TenantSettings {
-  id            String   @id @default(uuid())
-  tenantId      String   @unique
-  
-  primaryColor  String   @default("#06b6d4")
-  logoUrl       String?
-  businessName  String?
-  description   String?  @db.Text
-  address       String?
-  contactPhone  String?
-  website       String?
-  
-  timezone      String   @default("America/Sao_Paulo")
-  currency      String   @default("BRL")
+  id       String @id @default(uuid())
+  tenantId String @unique
+
+  primaryColor String  @default("#06b6d4")
+  logoUrl      String?
+  businessName String?
+  description  String? @db.Text
+  address      String?
+  contactPhone String?
+  website      String?
+
+  timezone        String  @default("America/Sao_Paulo")
+  currency        String  @default("BRL")
   // businessHours Json?  <-- REMOVIDO EM FAVOR DA NOVA TABELA
   reminderEnabled Boolean @default(false)
   reminderMinutes Int     @default(60)
-  
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@map("tenant_settings")
 }
 
 // ✅ TABELA NOVA
 model BusinessHour {
-  id        String  @id @default(uuid())
-  tenantId  String
-  
-  dayOfWeek Int     // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
-  startTime String  // "09:00"
-  endTime   String  // "18:00"
+  id       String @id @default(uuid())
+  tenantId String
+
+  dayOfWeek Int // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+  startTime String // "09:00"
+  endTime   String // "18:00"
   isOpen    Boolean @default(true)
 
-  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, dayOfWeek])
   @@map("business_hours")
 }
 
 model UserSettings {
-  id            String   @id @default(uuid())
-  userId        String   @unique 
-  theme         String   @default("system")
-  language      String   @default("pt-BR")
-  emailAlerts   Boolean  @default(true)
+  id             String  @id @default(uuid())
+  userId         String  @unique
+  theme          String  @default("system")
+  language       String  @default("pt-BR")
+  emailAlerts    Boolean @default(true)
   whatsappAlerts Boolean @default(true)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("user_settings")
 }
