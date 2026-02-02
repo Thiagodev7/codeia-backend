@@ -1,7 +1,7 @@
-import { prisma } from '../lib/prisma'
-import { logger } from '../lib/logger'
-import { startOfMinute, isBefore, addMinutes, subHours } from 'date-fns'
+import { addMinutes, isBefore, startOfMinute, subHours } from 'date-fns'
 import { Errors } from '../lib/errors'
+import { logger } from '../lib/logger'
+import { prisma } from '../lib/prisma'
 
 interface CreateAppointmentDTO {
   tenantId: string
@@ -19,16 +19,23 @@ interface CreateAppointmentDTO {
  */
 export class AppointmentService {
   
-  // --- [NOVO] LISTAR TUDO (Dashboard) ---
-  async listByTenant(tenantId: string) {
-    return prisma.appointment.findMany({
-      where: { tenantId },
-      include: { 
-        customer: { select: { id: true, name: true, phone: true } },
-        service: { select: { id: true, name: true, price: true } }
-      },
-      orderBy: { startTime: 'desc' }
-    })
+  // --- LISTAR TUDO (Dashboard) com Paginação ---
+  async listByTenant(tenantId: string, skip = 0, take = 20) {
+    const [data, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where: { tenantId },
+        include: { 
+          customer: { select: { id: true, name: true, phone: true } },
+          service: { select: { id: true, name: true, price: true } }
+        },
+        orderBy: { startTime: 'desc' },
+        skip,
+        take
+      }),
+      prisma.appointment.count({ where: { tenantId } })
+    ])
+    
+    return { data, total }
   }
 
   // --- LISTAR (Cliente/IA) ---

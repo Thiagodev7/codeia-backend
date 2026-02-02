@@ -26,23 +26,27 @@ describe('AppointmentService', () => {
   // listByTenant
   // ---------------------------------------------------------------------------
   describe('listByTenant', () => {
-    it('should return all appointments for tenant', async () => {
+    it('should return paginated appointments for tenant', async () => {
       const mockAppointments = [
         createMockAppointment({ tenantId }),
         createMockAppointment({ tenantId }),
       ]
       mockedPrisma.appointment.findMany.mockResolvedValue(mockAppointments as any)
+      mockedPrisma.appointment.count.mockResolvedValue(2)
 
-      const result = await service.listByTenant(tenantId)
+      const result = await service.listByTenant(tenantId, 0, 20)
 
-      expect(result).toHaveLength(2)
+      expect(result.data).toHaveLength(2)
+      expect(result.total).toBe(2)
       expect(mockedPrisma.appointment.findMany).toHaveBeenCalledWith({
         where: { tenantId },
         include: {
           customer: { select: { id: true, name: true, phone: true } },
           service: { select: { id: true, name: true, price: true } }
         },
-        orderBy: { startTime: 'desc' }
+        orderBy: { startTime: 'desc' },
+        skip: 0,
+        take: 20
       })
     })
   })

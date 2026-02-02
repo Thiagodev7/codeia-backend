@@ -1,7 +1,13 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { AppointmentService } from '../services/appointment.service'
 import { Errors } from '../lib/errors'
+import {
+    buildPaginatedResponse,
+    getSkip,
+    paginatedResponseSchema,
+    paginationQuerySchema
+} from '../lib/pagination'
+import { AppointmentService } from '../services/appointment.service'
 
 /**
  * Rotas de Agenda (Appointments)
@@ -18,44 +24,50 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
 
   const service = new AppointmentService()
 
+  const appointmentSchema = z.object({
+    id: z.string(),
+    title: z.string(),
+    startTime: z.string(),
+    endTime: z.string(),
+    status: z.string(),
+    customer: z.object({
+      id: z.string(),
+      name: z.string().nullable(),
+      phone: z.string()
+    }),
+    service: z.object({
+      name: z.string(),
+      price: z.any()
+    }).nullable()
+  })
+
   // ---------------------------------------------------------------------------
-  // GET /appointments - Listar Todos (Dashboard)
+  // GET /appointments - Listar Todos (Dashboard) com Paginação
   // ---------------------------------------------------------------------------
   app.get('/appointments', {
     schema: {
       tags: ['Agenda'],
       summary: 'Listar Agendamentos',
-      description: 'Retorna a agenda completa da empresa, incluindo detalhes do cliente e serviço.',
+      description: 'Retorna a agenda paginada da empresa, incluindo detalhes do cliente e serviço.',
       security: [{ bearerAuth: [] }],
+      querystring: paginationQuerySchema,
       response: {
-        200: z.array(z.object({
-          id: z.string(),
-          title: z.string(),
-          startTime: z.string(), // O Prisma retorna Date, o Fastify serializa para String ISO
-          endTime: z.string(),
-          status: z.string(),
-          customer: z.object({
-            id: z.string(),
-            name: z.string().nullable(),
-            phone: z.string()
-          }),
-          service: z.object({
-            name: z.string(),
-            price: z.any()
-          }).nullable()
-        }))
+        200: paginatedResponseSchema(appointmentSchema)
       }
     }
   }, async (req) => {
     const { tenantId } = req.user as { tenantId: string }
-    const appointments = await service.listByTenant(tenantId)
+    const { page, limit } = req.query as { page: number, limit: number }
     
-    // Pequena transformação para garantir formato ISO nas datas
-    return appointments.map(a => ({
+    const { data, total } = await service.listByTenant(tenantId, getSkip(page, limit), limit)
+    
+    const formattedData = data.map(a => ({
       ...a,
       startTime: a.startTime.toISOString(),
       endTime: a.endTime.toISOString()
     }))
+    
+    return buildPaginatedResponse(formattedData, total, page, limit)
   })
 
   // ---------------------------------------------------------------------------
