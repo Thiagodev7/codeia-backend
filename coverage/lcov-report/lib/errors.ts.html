@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">95.65% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>17/17</span>
+                <span class='fraction'>22/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>7/7</span>
+                <span class='fraction'>2/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">28.57% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>7/7</span>
+                <span class='fraction'>2/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">95.65% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>17/17</span>
+                <span class='fraction'>22/23</span>
             </div>
         
             
@@ -87,7 +87,14 @@
 <a name='L22'></a><a href='#L22'>22</a>
 <a name='L23'></a><a href='#L23'>23</a>
 <a name='L24'></a><a href='#L24'>24</a>
-<a name='L25'></a><a href='#L25'>25</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -95,54 +102,68 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span></td><td class="text"><pre class="prettyprint lang-js">// src/lib/errors.ts
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// src/lib/errors.ts
 &nbsp;
 export class AppError extends Error {
-    public readonly statusCode: number
-    public readonly code: string
-    public readonly details?: any
-  
-    constructor(message: string, statusCode = 400, code = 'GENERIC_ERROR', details?: any) {
-      super(message)
-      this.statusCode = statusCode
-      this.code = code
-      this.details = details
-      this.name = 'AppError'
-    }
+  public readonly statusCode: number
+  public readonly code: string
+  public readonly details?: Record&lt;string, unknown&gt;
+&nbsp;
+  constructor(
+    message: string,
+    statusCode = 400,
+    code = 'GENERIC_ERROR',
+    details?: Record&lt;string, unknown&gt;
+  ) {
+    super(message)
+    this.statusCode = statusCode
+    this.code = code
+    this.details = details
+    this.name = 'AppError'
   }
-  
-  // Factory para erros comuns (Facilita o uso no dia a dia)
-  export const Errors = {
-    BadRequest: (msg: string, details?: any) =&gt; new AppError(msg, 400, 'BAD_REQUEST', details),
-    NotFound: (msg: string) =&gt; new AppError(msg, 404, 'RESOURCE_NOT_FOUND'),
-    Unauthorized: (msg: string) =&gt; new AppError(msg, 401, 'UNAUTHORIZED'),
-    Forbidden: (msg: string) =&gt; new AppError(msg, 403, 'FORBIDDEN'),
-    Conflict: (msg: string) =&gt; new AppError(msg, 409, 'CONFLICT'),
-    Internal: (msg: string) =&gt; new AppError(msg, 500, 'INTERNAL_SERVER_ERROR'),
-  }</pre></td></tr></table></pre>
+}
+&nbsp;
+// Factory para erros comuns (Facilita o uso no dia a dia)
+export const Errors = {
+  BadRequest: <span class="fstat-no" title="function not covered" >(msg: string, details?: Record&lt;string, unknown&gt;) =&gt;</span>
+<span class="cstat-no" title="statement not covered" >    new AppError(msg, 400, 'BAD_REQUEST', details),</span>
+  NotFound: <span class="fstat-no" title="function not covered" >(msg: string) =&gt; new AppError(msg, 404, 'RESOURCE_NOT_FOUND'),</span>
+  Unauthorized: (msg: string) =&gt; new AppError(msg, 401, 'UNAUTHORIZED'),
+  Forbidden: <span class="fstat-no" title="function not covered" >(msg: string) =&gt; new AppError(msg, 403, 'FORBIDDEN'),</span>
+  Conflict: <span class="fstat-no" title="function not covered" >(msg: string) =&gt; new AppError(msg, 409, 'CONFLICT'),</span>
+  Internal: <span class="fstat-no" title="function not covered" >(msg: string) =&gt; new AppError(msg, 500, 'INTERNAL_SERVER_ERROR'),</span>
+}
+&nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-02T12:22:44.210Z
+                at 2026-02-02T17:56:43.594Z
             </div>
         <script src="../prettify.js"></script>
         <script>

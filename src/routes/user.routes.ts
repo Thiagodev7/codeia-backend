@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { UserService } from '../services/user.service'
 import { Errors } from '../lib/errors'
+import { UserService } from '../services/user.service'
 
 /**
  * Rotas de Usuários (Equipe)
@@ -30,16 +30,40 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
         description: 'Retorna todos os usuários cadastrados na conta da empresa.',
         security: [{ bearerAuth: [] }],
         response: {
-          200: z.array(
-            z.object({
-              id: z.string(),
-              name: z.string(),
-              email: z.string(),
-              role: z.string(),
-              phone: z.string().nullable(),
-            })
-          ),
+          200: z
+            .array(
+              z.object({
+                id: z.string().uuid(),
+                name: z.string(),
+                email: z.string().email(),
+                role: z.string(),
+                phone: z.string().nullable(),
+              })
+            )
+            .describe('Lista de membros da equipe'),
         },
+        examples: [
+          {
+            name: 'Lista Exemplo',
+            summary: 'Lista de usuários do tenant',
+            value: [
+              {
+                id: 'user-123',
+                name: 'John Doe',
+                email: 'john@example.com',
+                role: 'ADMIN',
+                phone: '11999999999',
+              },
+              {
+                id: 'user-456',
+                name: 'Jane Agent',
+                email: 'jane@example.com',
+                role: 'AGENT',
+                phone: null,
+              },
+            ],
+          },
+        ],
       },
     },
     async (req) => {
@@ -67,11 +91,26 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
           role: z.enum(['ADMIN', 'AGENT']).default('AGENT'),
         }),
         response: {
-          201: z.object({
-            id: z.string(),
-            email: z.string(),
-          }),
+          201: z
+            .object({
+              id: z.string().uuid(),
+              email: z.string().email(),
+            })
+            .describe('Usuário criado com sucesso'),
         },
+        examples: [
+          {
+            name: 'Novo Agente',
+            summary: 'Criação de novo membro da equipe',
+            value: {
+              name: 'Novo Agente',
+              email: 'novo@empresa.com',
+              password: 'senha123',
+              role: 'AGENT',
+              phone: '11988887777',
+            },
+          },
+        ],
       },
     },
     async (req, reply) => {

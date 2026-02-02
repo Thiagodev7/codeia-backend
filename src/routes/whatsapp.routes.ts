@@ -36,17 +36,43 @@ export const whatsappRoutes: FastifyPluginAsyncZod = async (app) => {
         summary: 'Listar Sessões',
         security: [{ bearerAuth: [] }],
         response: {
-          200: z.array(
-            z.object({
-              id: z.string(),
-              sessionName: z.string(),
-              status: z.string(),
-              agent: z.object({ name: z.string() }).nullable().optional(),
-              qrCode: z.string().nullable(), // Vindo da memória do Manager
-              phoneNumber: z.string().nullable(),
-            })
-          ),
+          200: z
+            .array(
+              z.object({
+                id: z.string().uuid(),
+                sessionName: z.string(),
+                status: z.string(),
+                agent: z.object({ name: z.string() }).nullable().optional(),
+                qrCode: z.string().nullable(),
+                phoneNumber: z.string().nullable(),
+              })
+            )
+            .describe('Lista de sessões do WhatsApp'),
         },
+        examples: [
+          {
+            name: 'Lista de Sessões',
+            summary: 'Exemplo com sessões conectadas e desconectadas',
+            value: [
+              {
+                id: 'sess-123',
+                sessionName: 'Comercial 1',
+                status: 'CONNECTED',
+                agent: { name: 'João Silva' },
+                qrCode: null,
+                phoneNumber: '5511999999999',
+              },
+              {
+                id: 'sess-456',
+                sessionName: 'Suporte',
+                status: 'QRCODE',
+                agent: null,
+                qrCode: 'base64_qr_code_string...',
+                phoneNumber: null,
+              },
+            ],
+          },
+        ],
       },
     },
     async (req) => {
@@ -90,8 +116,17 @@ export const whatsappRoutes: FastifyPluginAsyncZod = async (app) => {
         security: [{ bearerAuth: [] }],
         body: z.object({
           sessionName: z.string().min(3),
-          agentId: z.string().uuid().optional(), // Opcional: Vincular agente na criação
+          agentId: z.string().uuid().optional(),
         }),
+        response: {
+          201: z
+            .object({
+              id: z.string().uuid(),
+              sessionName: z.string(),
+              status: z.string(),
+            })
+            .describe('Sessão criada com sucesso'),
+        },
       },
     },
     async (req, reply) => {

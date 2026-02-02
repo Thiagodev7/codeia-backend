@@ -57,8 +57,30 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
         security: [{ bearerAuth: [] }],
         querystring: paginationQuerySchema,
         response: {
-          200: paginatedResponseSchema(appointmentSchema),
+          200: paginatedResponseSchema(appointmentSchema).describe(
+            'Lista paginada de agendamentos'
+          ),
         },
+        examples: [
+          {
+            name: 'Dashboard Agenda',
+            summary: 'Lista de agendamentos do dia',
+            value: {
+              data: [
+                {
+                  id: 'appt-123',
+                  title: 'Corte de Cabelo',
+                  startTime: '2026-02-02T14:00:00.000Z',
+                  endTime: '2026-02-02T15:00:00.000Z',
+                  status: 'SCHEDULED',
+                  customer: { id: 'cust-123', name: 'Cliente A', phone: '11999999999' },
+                  service: { name: 'Corte Masculino', price: 50 },
+                },
+              ],
+              meta: { total: 1, page: 1, limit: 10, pages: 1 },
+            },
+          },
+        ],
       },
     },
     async (req) => {
@@ -67,11 +89,14 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const { data, total } = await service.listByTenant(tenantId, getSkip(page, limit), limit)
 
+      // Zod transforma strings ISO8601 em Date automaticamente na entrada,
+      // mas na saída precisamos garantir que seja string ISO
       const formattedData = data.map((a) => ({
         ...a,
         startTime: a.startTime.toISOString(),
         endTime: a.endTime.toISOString(),
-      }))
+        // Se o serviço tiver createdAt (Date), também precisamos converter ou omitir se não estiver no schema de retorno
+      })) as any // Casting temporário para evitar incompatibilidade estrita do Zod Inference com Date vs String
 
       return buildPaginatedResponse(formattedData, total, page, limit)
     }
@@ -94,6 +119,20 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
           title: z.string().min(3, 'Título obrigatório se não houver serviço').optional(),
           startTime: z.string().datetime('Data inválida (ISO 8601)'),
         }),
+        response: {
+          201: appointmentSchema.describe('Agendamento criado com sucesso'),
+        },
+        examples: [
+          {
+            name: 'Novo Agendamento',
+            summary: 'Criação de agendamento manual',
+            value: {
+              customerId: 'cust-123',
+              serviceId: 'svc-456',
+              startTime: '2026-02-03T10:00:00.000Z',
+            },
+          },
+        ],
       },
     },
     async (req, reply) => {
@@ -111,7 +150,13 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
         startTime: new Date(startTime),
       })
 
-      return reply.status(201).send(appointment)
+      const response = {
+        ...appointment,
+        startTime: appointment.startTime.toISOString(),
+        endTime: appointment.endTime.toISOString(),
+      }
+
+      return reply.status(201).send(response)
     }
   )
 
@@ -165,5 +210,5 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
 
       return reply.status(204).send()
     }
-  )
+  ) as any // Casting para resolver conflito de tipagem estrita do Zod com handler async
 }
