@@ -37,7 +37,9 @@ function normalizeString(str: string): string {
 /**
  * Converte o JSON de horários do banco para texto legível.
  */
-function formatBusinessHours(schedule: any): string {
+function formatBusinessHours(
+  schedule: Record<string, { open: boolean; start: string; end: string }> | null
+): string {
   if (!schedule) return 'Horário não configurado (Consulte o suporte).'
 
   const dayMap: Record<string, string> = {
@@ -143,11 +145,12 @@ export class AIService {
       where: { tenantId: context.tenantId },
     })
 
-    // 2. Serviços
-    const services = await prisma.service.findMany({
+    // 2. Serviços (convertendo Decimal para number)
+    const servicesData = await prisma.service.findMany({
       where: { tenantId: context.tenantId, isActive: true },
       select: { id: true, name: true, duration: true, price: true, description: true },
     })
+    const services = servicesData.map((s) => ({ ...s, price: Number(s.price) }))
 
     // 3. Prompt (Com injeção de Timezone correta)
     const systemPrompt = this.buildSystemPrompt(
@@ -173,7 +176,12 @@ export class AIService {
 
       if (functionCalls && functionCalls.length > 0) {
         const call = functionCalls[0]
-        const toolResult = await this.handleToolCall(call.name, call.args, context, services)
+        const toolResult = await this.handleToolCall(
+          call.name,
+          (call.args || {}) as Record<string, unknown>,
+          context,
+          services
+        )
 
         const nextPart = await chatSession.sendMessage([
           {
@@ -185,8 +193,9 @@ export class AIService {
       }
 
       return { response: response.text() }
-    } catch (error: any) {
-      logger.error({ error: error.message }, '❌ Falha no Chat IA')
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      logger.error({ error: errorMessage }, '❌ Falha no Chat IA')
       throw Errors.Internal('Erro no Serviço de IA.')
     }
   }
@@ -196,9 +205,9 @@ export class AIService {
   private buildSystemPrompt(
     instructions: string,
     context: ChatContext,
-    services: any[],
-    settings: any,
-    businessHours: any[]
+    services: { id: string; name: string; duration: number; price: number }[],
+    settings: { timezone?: string | null; [key: string]: unknown } | null,
+    businessHours: { dayOfWeek: number; startTime: string; endTime: string; isOpen: boolean }[]
   ): string {
     const servicesList = services
       .map((s) => `🔹 ${s.name} (${s.duration}min) - R$ ${Number(s.price).toFixed(2)}`)
@@ -220,7 +229,13 @@ export class AIService {
         .join('\n      ')
     } else {
       // Fallback para JSON antigo (se houver migração pendente)
-      hoursText = formatBusinessHours(settings?.businessHours)
+      hoursText = formatBusinessHours(
+        (
+          settings as {
+            businessHours?: Record<string, { open: boolean; start: string; end: string }> | null
+          }
+        )?.businessHours || null
+      )
     }
 
     // --- CORREÇÃO DE DATA/FUSO ---
@@ -276,9 +291,9 @@ export class AIService {
 
   private async handleToolCall(
     name: string,
-    args: any,
+    args: Record<string, unknown>,
     context: ChatContext,
-    services: any[]
+    services: { id: string; name: string; duration: number }[]
   ): Promise<ToolExecutionResult> {
     try {
       switch (name) {
@@ -293,42 +308,54 @@ export class AIService {
           }
         }
         case 'cancelAppointment': {
+          const appointmentId =
+            typeof args.appointmentId === 'string' ? args.appointmentId : String(args.appointmentId)
           await this.appointmentService.cancelAppointment(
             context.tenantId,
             context.customerId,
-            args.appointmentId
+            appointmentId
           )
           return { status: 'success', message: 'Cancelado.' }
         }
         case 'rescheduleAppointment': {
+          const appointmentId =
+            typeof args.appointmentId === 'string' ? args.appointmentId : String(args.appointmentId)
+          const newDateTime =
+            typeof args.newDateTime === 'string' ? args.newDateTime : String(args.newDateTime)
           const updated = await this.appointmentService.rescheduleAppointment(
             context.tenantId,
-            args.appointmentId,
-            new Date(args.newDateTime),
+            appointmentId,
+            new Date(newDateTime),
             context.customerId
           )
           return { status: 'success', message: `Reagendado para ${updated.startTime}.` }
         }
         case 'createAppointment': {
-          const inputName = normalizeString(args.serviceName)
+          const serviceName =
+            typeof args.serviceName === 'string' ? args.serviceName : String(args.serviceName || '')
+          const dateTime = typeof args.dateTime === 'string' ? args.dateTime : String(args.dateTime)
+          const inputName = normalizeString(serviceName)
           const service = services.find((s) => normalizeString(s.name).includes(inputName))
 
           // Conversão segura de data
-          const appointmentDate = new Date(args.dateTime)
+          const appointmentDate = new Date(dateTime)
 
           // Validação extra de segurança antes de chamar o service
           if (isNaN(appointmentDate.getTime())) {
             return { status: 'error', message: 'Data inválida. Tente novamente.' }
           }
 
+          const clientName = args.clientName ? String(args.clientName) : context.customerName
+          const clientPhone = args.clientPhone ? String(args.clientPhone) : context.customerPhone
+
           const app = await this.appointmentService.createAppointment({
             tenantId: context.tenantId,
             customerId: context.customerId,
             serviceId: service?.id,
-            title: service?.name || args.serviceName,
+            title: service?.name || serviceName,
             startTime: appointmentDate,
-            clientName: args.clientName || context.customerName,
-            clientPhone: args.clientPhone || context.customerPhone,
+            clientName,
+            clientPhone,
           })
           return {
             status: 'success',
@@ -338,21 +365,26 @@ export class AIService {
         default:
           return { status: 'error', message: 'Ferramenta desconhecida.' }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Tratamento amigável de erros conhecidos
-      if (error.message.includes('passado')) {
+      const errMsg = error instanceof Error ? error.message : ''
+      if (errMsg.includes('passado')) {
         return {
           status: 'error',
           message:
             'Erro de fuso horário: O sistema achou que esse horário já passou. Por favor, tente um horário um pouco mais tarde.',
         }
       }
-      return { status: 'error', message: error.message || 'Erro ao processar.' }
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao processar'
+      return { status: 'error', message: errorMessage }
     }
   }
 
   // (Métodos auxiliares CRUD de agentes mantidos iguais ao original)
-  async createAgent(tenantId: string, data: any) {
+  async createAgent(
+    tenantId: string,
+    data: { name: string; slug: string; instructions: string; model?: string }
+  ) {
     const existing = await prisma.agent.findUnique({
       where: { tenantId_slug: { tenantId, slug: data.slug } },
     })
@@ -362,7 +394,17 @@ export class AIService {
       data: { tenantId, ...data, model: this.MODEL_NAME, isActive: activeCount === 0 },
     })
   }
-  async updateAgent(tenantId: string, agentId: string, data: any) {
+  async updateAgent(
+    tenantId: string,
+    agentId: string,
+    data: Partial<{
+      name: string
+      slug: string
+      instructions: string
+      model: string
+      isActive: boolean
+    }>
+  ) {
     return prisma.agent.update({ where: { id: agentId }, data })
   }
   async deleteAgent(tenantId: string, agentId: string) {

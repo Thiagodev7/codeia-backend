@@ -1,9 +1,9 @@
 import { PrismaClient } from '@prisma/client'
 import {
-  initAuthCreds,
-  BufferJSON,
   AuthenticationCreds,
   AuthenticationState,
+  BufferJSON,
+  initAuthCreds,
   SignalDataTypeMap,
 } from '@whiskeysockets/baileys'
 import { logger } from './logger'
@@ -51,7 +51,7 @@ export const usePrismaAuthState = async (
 
         // Salva ou deleta chaves em lote (Batch)
         set: async (data) => {
-          const tasks: any[] = []
+          const tasks = []
 
           for (const category in data) {
             const keyCategory = category as keyof SignalDataTypeMap
@@ -93,12 +93,18 @@ export const usePrismaAuthState = async (
           if (tasks.length > 0) {
             try {
               await prisma.$transaction(tasks)
-            } catch (error: any) {
+            } catch (error: unknown) {
               // Filtro de erro: P2025 (Record not found) é comum em deletes concorrentes e pode ser ignorado.
               // Outros erros são logados para auditoria.
-              if (error.code !== 'P2025') {
+              const errorCode =
+                error && typeof error === 'object' && 'code' in error ? error.code : null
+              if (errorCode !== 'P2025') {
+                const errorMessage =
+                  error && typeof error === 'object' && 'message' in error
+                    ? String(error.message)
+                    : 'Unknown error'
                 logger.error(
-                  { error: error.message, code: error.code },
+                  { error: errorMessage, code: errorCode },
                   '❌ Erro ao sincronizar chaves do Baileys no banco'
                 )
               }

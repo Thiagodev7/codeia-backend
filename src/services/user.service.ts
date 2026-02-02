@@ -1,6 +1,6 @@
 import { hash } from 'bcryptjs'
-import { prisma } from '../lib/prisma'
 import { Errors } from '../lib/errors'
+import { prisma } from '../lib/prisma'
 
 interface CreateUserInput {
   name: string
@@ -63,7 +63,7 @@ export class UserService {
     const user = await prisma.user.findFirst({ where: { id: userId, tenantId } })
     if (!user) throw Errors.NotFound('Usuário não encontrado.')
 
-    const updateData: any = { ...data }
+    const updateData: Partial<UpdateUserInput & { passwordHash?: string }> = { ...data }
 
     if (data.password) {
       updateData.passwordHash = await hash(data.password, 6)

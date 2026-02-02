@@ -1,6 +1,6 @@
 // src/services/settings.service.ts
-import { prisma } from '../lib/prisma'
 import { Errors } from '../lib/errors' // ✅ Importante
+import { prisma } from '../lib/prisma'
 
 interface BusinessHourInput {
   dayOfWeek: number
@@ -25,7 +25,23 @@ export class SettingsService {
     return { ...settings, businessHours }
   }
 
-  async updateTenantSettings(tenantId: string, data: any) {
+  async updateTenantSettings(
+    tenantId: string,
+    data: Partial<{
+      businessName?: string | null
+      description?: string | null
+      primaryColor?: string | null
+      logoUrl?: string | null
+      contactPhone?: string | null
+      website?: string | null
+      address?: string | null
+      timezone?: string | null
+      currency?: string | null
+      reminderEnabled?: boolean | null
+      reminderMinutes?: number | null
+      businessHours?: BusinessHourInput[]
+    }>
+  ) {
     const { businessHours, ...settingsData } = data
 
     // 🔒 VALIDAÇÃO DE PLANO (Feature Gating)
@@ -51,8 +67,10 @@ export class SettingsService {
     // 1. Atualiza configurações
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
-      create: { tenantId, ...settingsData },
-      update: settingsData,
+      create: { tenantId, ...settingsData } as Parameters<
+        typeof prisma.tenantSettings.upsert
+      >[0]['create'],
+      update: settingsData as Parameters<typeof prisma.tenantSettings.upsert>[0]['update'],
     })
 
     // 2. Atualiza Horários
@@ -92,7 +110,10 @@ export class SettingsService {
     })
   }
 
-  async updateUserSettings(userId: string, data: any) {
+  async updateUserSettings(
+    userId: string,
+    data: Partial<{ theme?: string; notifications?: boolean }>
+  ) {
     return prisma.userSettings.upsert({
       where: { userId },
       create: { userId, ...data },

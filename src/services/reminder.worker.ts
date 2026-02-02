@@ -76,8 +76,9 @@ export class ReminderWorker {
       )
 
       logger.info('📅 Cron job de lembretes registrado: execução a cada minuto')
-    } catch (error: any) {
-      logger.error({ error: error.message }, '❌ Erro ao registrar cron job')
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      logger.error({ error: errorMsg }, '❌ Erro ao registrar cron job')
     }
   }
 
@@ -145,8 +146,9 @@ export class ReminderWorker {
           await this.sendReminder(waManager, setting.tenantId, app)
         }
       }
-    } catch (error: any) {
-      logger.error({ error: error.message }, '❌ Erro no processamento de lembretes')
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      logger.error({ error: errorMsg }, '❌ Erro no processamento de lembretes')
       throw error // Re-throw para BullMQ registrar falha
     }
   }
@@ -157,7 +159,12 @@ export class ReminderWorker {
   private async sendReminder(
     waManager: WhatsAppManager,
     tenantId: string,
-    appointment: any
+    appointment: {
+      id: string
+      title: string
+      startTime: Date
+      customer: { name: string | null; phone: string }
+    }
   ): Promise<void> {
     const phone = appointment.customer.phone
     const timeString = appointment.startTime.toLocaleTimeString('pt-BR', {

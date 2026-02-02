@@ -223,8 +223,9 @@ export class WhatsAppWorker {
 
       logger.info({ phone }, '✅ [Worker] Mensagem enviada!')
       return true
-    } catch (error: any) {
-      logger.error({ tenantId, error: error.message }, '❌ [Worker] Erro ao enviar')
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      logger.error({ tenantId, error: errorMessage }, '❌ [Worker] Erro ao enviar')
       throw error // Re-throw para BullMQ tentar novamente
     }
   }
@@ -233,7 +234,10 @@ export class WhatsAppWorker {
   // Event Handlers
   // ---------------------------------------------------------------------------
 
-  private async handleConnectionUpdate(sessionId: string, update: any): Promise<void> {
+  private async handleConnectionUpdate(
+    sessionId: string,
+    update: Partial<{ connection: string; lastDisconnect: unknown; qr: string }>
+  ): Promise<void> {
     const { connection, lastDisconnect, qr } = update
     const session = this.sessions.get(sessionId)
 
@@ -271,7 +275,7 @@ export class WhatsAppWorker {
     if (connection === 'close') {
       if (!this.sessions.has(sessionId)) return
 
-      const error = lastDisconnect?.error as any
+      const error = (lastDisconnect as { error?: { output?: { statusCode?: number } } })?.error
       const statusCode = error?.output?.statusCode
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut
 
@@ -301,7 +305,7 @@ export class WhatsAppWorker {
 
   private async handleIncomingMessages(
     sessionId: string,
-    upsert: { messages: any[]; type: string }
+    upsert: { messages: unknown[]; type: string }
   ): Promise<void> {
     const { messages, type } = upsert
 
@@ -310,7 +314,11 @@ export class WhatsAppWorker {
     const session = this.sessions.get(sessionId)
     if (!session) return
 
-    for (const msg of messages) {
+    for (const msg of messages as {
+      message?: Record<string, unknown>
+      key: { fromMe?: boolean; remoteJid?: string }
+      pushName?: string
+    }[]) {
       if (!msg.message || msg.key.fromMe) continue
 
       const remoteJid = msg.key.remoteJid!
@@ -318,7 +326,9 @@ export class WhatsAppWorker {
 
       const phone = remoteJid.split('@')[0]
       const name = msg.pushName || 'Cliente'
-      const text = msg.message.conversation || msg.message.extendedTextMessage?.text
+      const conversation = msg.message.conversation as string | undefined
+      const extendedText = msg.message.extendedTextMessage as { text?: string } | undefined
+      const text = conversation || extendedText?.text
 
       if (!text) continue
 
@@ -340,8 +350,9 @@ export class WhatsAppWorker {
               name,
               text,
             })
-          } catch (error: any) {
-            logger.error({ error: error.message }, '❌ Erro ao processar mensagem')
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            logger.error({ error: errorMessage }, '❌ Erro ao processar mensagem')
           }
         }
       )

@@ -3,9 +3,14 @@
 export class AppError extends Error {
   public readonly statusCode: number
   public readonly code: string
-  public readonly details?: any
+  public readonly details?: Record<string, unknown>
 
-  constructor(message: string, statusCode = 400, code = 'GENERIC_ERROR', details?: any) {
+  constructor(
+    message: string,
+    statusCode = 400,
+    code = 'GENERIC_ERROR',
+    details?: Record<string, unknown>
+  ) {
     super(message)
     this.statusCode = statusCode
     this.code = code
@@ -16,7 +21,8 @@ export class AppError extends Error {
 
 // Factory para erros comuns (Facilita o uso no dia a dia)
 export const Errors = {
-  BadRequest: (msg: string, details?: any) => new AppError(msg, 400, 'BAD_REQUEST', details),
+  BadRequest: (msg: string, details?: Record<string, unknown>) =>
+    new AppError(msg, 400, 'BAD_REQUEST', details),
   NotFound: (msg: string) => new AppError(msg, 404, 'RESOURCE_NOT_FOUND'),
   Unauthorized: (msg: string) => new AppError(msg, 401, 'UNAUTHORIZED'),
   Forbidden: (msg: string) => new AppError(msg, 403, 'FORBIDDEN'),

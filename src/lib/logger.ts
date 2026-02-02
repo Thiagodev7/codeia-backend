@@ -1,6 +1,6 @@
-import pino from 'pino'
-import path from 'path'
 import fs from 'fs'
+import path from 'path'
+import pino from 'pino'
 import { getLogContext } from './async-context'
 
 // Garante que a pasta de logs existe
@@ -67,7 +67,7 @@ const baseLogger = pino(
 export const logger = new Proxy(baseLogger, {
   get(target, property, receiver) {
     if (['info', 'warn', 'error', 'debug', 'fatal', 'trace'].includes(String(property))) {
-      return (obj: object | string, msg?: string, ...args: any[]) => {
+      return (obj: object | string, msg?: string, ...args: unknown[]) => {
         const context = getLogContext()
         const method = target[property as keyof typeof target] as Function
 

@@ -56,7 +56,10 @@ export class AppointmentService {
   // --- CANCELAR ---
   async cancelAppointment(tenantId: string, customerId: string, appointmentId: string) {
     // Busca flexível: Se customerId vier undefined (Admin), ignora o filtro de customer
-    const whereCondition: any = { id: appointmentId, tenantId }
+    const whereCondition: { id: string; tenantId: string; customerId?: string } = {
+      id: appointmentId,
+      tenantId,
+    }
     if (customerId) whereCondition.customerId = customerId
 
     const appointment = await prisma.appointment.findFirst({
@@ -89,7 +92,10 @@ export class AppointmentService {
 
     return prisma.$transaction(async (tx) => {
       // Busca flexível (Admin vs Cliente)
-      const whereCondition: any = { id: appointmentId, tenantId }
+      const whereCondition: { id: string; tenantId: string; customerId?: string } = {
+        id: appointmentId,
+        tenantId,
+      }
       if (customerId) whereCondition.customerId = customerId
 
       const original = await tx.appointment.findFirst({
