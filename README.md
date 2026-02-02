@@ -1,101 +1,152 @@
-# 🤖 CodeIA --- Backend SaaS de Automação para WhatsApp com IA (Gemini)
+# 🤖 CodeIA Backend
 
-Plataforma SaaS completa para **automação de WhatsApp** integrada com
-**Inteligência Artificial Google Gemini**, permitindo criação de
-atendentes virtuais, fluxos inteligentes e gestão de múltiplas contas
-WhatsApp.
+> **Versão 2.0:** Arquitetura Distribuída Escalável
 
-## 🧩 Tecnologias Utilizadas
+Plataforma SaaS para **automação de WhatsApp** integrada com **IA (Gemini)**, projetada para alta performance e escalabilidade.
 
-  Função               Tecnologia
-  -------------------- --------------------------------
-  **Runtime**          Node.js + TypeScript
-  **Framework Web**    Fastify
-  **ORM**              Prisma ORM
-  **Banco de Dados**   PostgreSQL
-  **IA**               Google Gemini 1.5 Flash
-  **WhatsApp**         whatsapp-web.js (Multi-Device)
-  **Docs API**         Swagger (OpenAPI 3.1)
+## 🚀 Novidades na v2.0
 
-## 📦 Estrutura do Projeto
+- **Arquitetura Distribuída:** Separação entre API e Workers (WhatsApp/Reminder).
+- **Filas de Processamento:** Uso de **BullMQ + Redis** para gestão de tarefas assíncronas.
+- **Escalabilidade:** Conexões WhatsApp isoladas da API principal.
+- **Resiliência:** Tratamento de falhas, retries automáticos e Graceful Shutdown.
+- **Performance:** Queries otimizadas com índices e Raw SQL.
+- **Qualidade:** Testes unitários e de integração automatizados.
 
-    /src
-     ├── modules
-     │   ├── auth
-     │   ├── users
-     │   ├── ai
-     │   ├── whatsapp
-     │   └── shared
-     ├── config
-     ├── plugins
-     ├── utils
-     └── server.ts
+---
 
-## ⚙️ Como Rodar o Projeto
+## 🧩 Stack Tecnológica
 
-### 1️⃣ Instalar Dependências
+| Camada              | Tecnologia                          |
+| ------------------- | ----------------------------------- |
+| **Runtime**         | Node.js 20+ (TypeScript)            |
+| **API Framework**   | Fastify                             |
+| **Database**        | PostgreSQL + Prisma ORM             |
+| **Queues/Cache**    | **Redis** + BullMQ                  |
+| **WhatsApp Engine** | Baileys (via Workers)               |
+| **AI**              | Google Gemini (1.5 Flash/2.0 Flash) |
+| **Testes**          | Vitest + Supertest                  |
 
-``` bash
+---
+
+## 📦 Arquitetura do Projeto
+
+```
+src/
+ ├── services/             # Lógica de negócios e Workers
+ │   ├── whatsapp.worker.ts  # Worker dedicado ao WhatsApp (Baileys)
+ │   ├── reminder.worker.ts  # Worker de agendamentos (Cron Job)
+ │   └── ...
+ ├── lib/                  # Configurações globais
+ │   ├── queues.ts           # Definição das filas BullMQ
+ │   ├── redis.ts            # Conexão Redis
+ │   └── ...
+ ├── routes/               # Rotas da API (Fastify)
+ ├── __tests__/            # Testes Automatizados
+ │   ├── unit/               # Testes unitários
+ │   └── integration/        # Testes de integração (API)
+ └── server.ts             # Entrypoint
+```
+
+---
+
+## ⚙️ Configuração e Instalação
+
+### Pré-requisitos
+
+- Node.js 18+
+- PostgreSQL
+- **Redis** (Obrigatório para filas e cache)
+
+### 1. Clonar e Instalar
+
+```bash
+git clone https://github.com/seu-repo/codeia-backend.git
+cd codeia-backend
 npm install
 ```
 
-### 2️⃣ Configurar Variáveis de Ambiente
+### 2. Variáveis de Ambiente
 
-``` bash
+Copie o `.env.example` para `.env`:
+
+```bash
 cp .env.example .env
 ```
 
-``` env
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/codeia"
-JWT_SECRET="sua_chave_secreta"
-GEMINI_API_KEY="sua_api_key_gemini"
+Configurações essenciais:
+
+```env
+DATABASE_URL="postgresql://user:pass@localhost:5432/codeia_db"
+REDIS_URL="redis://localhost:6379"
+JWT_SECRET="sua_chave_segura"
+GOOGLE_AI_KEY="sua_gemini_api_key"
 ```
 
-### 3️⃣ Configurar Banco de Dados
+### 3. Banco de Dados
 
-``` bash
-npx prisma db push
+Aplicar migrations e índices:
+
+```bash
+npx prisma migrate dev
 ```
 
-### 4️⃣ Rodar o Servidor em Desenvolvimento
+### 4. Rodar o Projeto
 
-``` bash
+**Modo Desenvolvimento:**
+
+```bash
 npm run dev
+# Inicia API + Workers em paralelo
 ```
+
+**Modo Produção:**
+
+```bash
+npm run build
+npm start
+```
+
+---
+
+## 🧪 Testes
+
+O projeto utiliza **Vitest** para testes de alta performance.
+
+| Comando                 | Descrição                             |
+| ----------------------- | ------------------------------------- |
+| `npm test`              | Roda testes em modo watch             |
+| `npm run test:run`      | Roda todos os testes uma vez          |
+| `npm run test:coverage` | Gera relatório de cobertura de código |
+
+**Cobertura Atual:**
+
+- ✅ Unitários: Services, Libs e Helpers
+- ✅ Integração: Rotas de Autenticação
+
+---
 
 ## 📚 Documentação da API
 
-Acesse `/docs`.
+Quando o servidor estiver rodando, acesse:
 
-## 🤖 Integração com IA (Gemini)
+- **Swagger UI:** `http://localhost:3333/docs`
+- **Guia Frontend:** Veja [`docs/API_FRONTEND.md`](./docs/API_FRONTEND.md) para detalhes de integração.
 
--   Gemini 1.5 Flash\
--   Respostas inteligentes\
--   Análise de contexto
+---
 
-## 💬 Integração WhatsApp (Multi-Device)
+## � Roadmap
 
--   whatsapp-web.js\
--   QR Code\
--   Multi-sessões\
--   Automação com IA
+- [x] Arquitetura de Workers (WhatsApp)
+- [x] Sistema de Filas (BullMQ)
+- [x] Testes Automatizados
+- [x] Otimização de Performance (Índices/SQL)
+- [ ] Dashboard de Monitoramento (Bull Board)
+- [ ] Webhooks para eventos externos
+- [ ] Suporte a envio de mídia (imagem/áudio)
 
-## 🌱 Inicialização do Git
-
-``` bash
-git init
-git branch -M main
-git add .
-git commit -m "feat: Initial commit - Project Structure with Auth, Prisma, AI and WhatsApp Manager"
-```
-
-## 🚀 Roadmap
-
--   Painel multi-tenant\
--   Filas de atendimento\
--   Templates inteligentes\
--   Logs e analytics avançados
+---
 
 ## 🛡️ Licença
 
-Projeto proprietário.
+Projeto proprietário. Todos os direitos reservados.
