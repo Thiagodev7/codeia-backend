@@ -17,7 +17,7 @@ import { whatsappRoutes } from './routes/whatsapp.routes'
 
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
-import { ReminderService } from './services/reminder.service'
+import { ReminderWorker } from './services/reminder.worker'
 import { WhatsAppManager } from './services/whatsapp-manager.service'
 import { WhatsAppWorker } from './services/whatsapp.worker'
 
@@ -91,13 +91,14 @@ app.listen({ port: 3333, host: '0.0.0.0' }).then(async (address) => {
   // Restaura sessões ativas (enfileira jobs de START)
   await restoreSessions()
   
-  // ✅ Iniciar loop de lembretes
-  ReminderService.start()
+  // ✅ Iniciar Reminder Worker (cron job a cada minuto)
+  const reminderWorker = new ReminderWorker()
   
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('🛑 Encerrando servidor...')
     await whatsappWorker.shutdown()
+    await reminderWorker.shutdown()
     await app.close()
     process.exit(0)
   }

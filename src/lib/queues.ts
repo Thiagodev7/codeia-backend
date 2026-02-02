@@ -67,3 +67,29 @@ export const whatsappQueue = new Queue<WhatsAppJobData>('whatsapp', {
 
 export const WHATSAPP_STATUS_CHANNEL = 'whatsapp:status'
 export const WHATSAPP_SESSIONS_HASH = 'whatsapp:sessions'
+
+// ---------------------------------------------------------------------------
+// Tipos de Jobs de Lembrete
+// ---------------------------------------------------------------------------
+
+export interface ReminderJobData {
+  type: 'CHECK_REMINDERS'
+}
+
+// ---------------------------------------------------------------------------
+// Fila de Lembretes
+// ---------------------------------------------------------------------------
+
+/**
+ * Fila para jobs de lembrete
+ * 
+ * Usa cron job para verificar agendamentos pendentes a cada minuto.
+ * Processa apenas uma vez mesmo com múltiplas instâncias.
+ */
+export const reminderQueue = new Queue<ReminderJobData>('reminder', {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: 50,
+    removeOnFail: 100
+  }
+})
