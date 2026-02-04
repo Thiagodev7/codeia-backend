@@ -55,6 +55,9 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
             // Serviços Genéricos
             allowGenericServices: z.boolean(),
             genericServiceDuration: z.number(),
+
+            // Conhecimento da IA
+            aiKnowledge: z.string().optional().nullable(),
           }),
         },
       },
@@ -70,6 +73,7 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         reminderMinutes: data.reminderMinutes ?? 60,
         allowGenericServices: data.allowGenericServices ?? false,
         genericServiceDuration: data.genericServiceDuration ?? 30,
+        aiKnowledge: data.aiKnowledge ?? '',
       }
     }
   )
@@ -114,6 +118,9 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
           // Serviços Genéricos
           allowGenericServices: z.boolean().optional(),
           genericServiceDuration: z.number().optional(),
+
+          // Conhecimento da IA
+          aiKnowledge: z.string().optional().nullable(),
         }),
       },
     },

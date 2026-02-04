@@ -228,6 +228,7 @@ export class AIService {
       timezone?: string | null
       allowGenericServices?: boolean
       genericServiceDuration?: number
+      aiKnowledge?: string | null
       [key: string]: unknown
     } | null,
     businessHours: { dayOfWeek: number; startTime: string; endTime: string; isOpen: boolean }[]
@@ -318,6 +319,18 @@ export class AIService {
       ${servicesList || 'Nenhum serviço cadastrado.'}
 
       ${genericServiceInstruction}
+
+      ${
+        settings?.aiKnowledge
+          ? `
+      === 🧠 CONHECIMENTO DO NEGÓCIO (FONTE DA VERDADE) ===
+      As informações abaixo são FATOS sobre este estabelecimento.
+      Se o texto mencionar nomes de profissionais (ex: "O Thiago atende"), assuma que É ELE quem realizará o serviço.
+      
+      ${settings.aiKnowledge}
+      `
+          : ''
+      }
 
       === 🚨 REGRAS DE DATA E HORA (CRÍTICO) ===
       1. **Hoje é:** ${dateStr}.

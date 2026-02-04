@@ -187,6 +187,9 @@ model TenantSettings {
   allowGenericServices   Boolean @default(false)
   genericServiceDuration Int     @default(30)
 
+  // Conhecimento da IA
+  aiKnowledge String? @db.Text
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
