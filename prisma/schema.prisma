@@ -27,7 +27,8 @@ model Tenant {
   services     Service[]
 
   settings      TenantSettings?
-  businessHours BusinessHour[] // ✅ Novo Relacionamento
+  businessHours BusinessHour[]
+  usageRecords  UsageRecord[] // ✅ Novo Relacionamento
 
   @@map("tenants")
 }
@@ -64,6 +65,7 @@ model Agent {
   updatedAt    DateTime          @updatedAt
   tenant       Tenant            @relation(fields: [tenantId], references: [id])
   waSessions   WhatsAppSession[]
+  usageRecords UsageRecord[] // ✅ Novo Relacionamento
 
   @@unique([tenantId, slug])
   @@map("agents")
@@ -106,6 +108,7 @@ model Customer {
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   messages     Message[]
   appointments Appointment[]
+  usageRecords UsageRecord[] // ✅ Novo Relacionamento
 
   @@unique([tenantId, phone])
   @@map("customers")
@@ -221,4 +224,27 @@ model UserSettings {
   user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_settings")
+}
+
+// ✅ RASTREAMENTO DE USO (Token Usage)
+model UsageRecord {
+  id         String  @id @default(uuid())
+  tenantId   String
+  agentId    String?
+  customerId String?
+
+  model        String // ex: "gemini-2.0-flash-lite"
+  inputTokens  Int
+  outputTokens Int
+  totalTokens  Int
+
+  createdAt DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent    Agent?    @relation(fields: [agentId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([agentId])
+  @@map("usage_records")
 }

@@ -1,4 +1,5 @@
 import { Content, GoogleGenerativeAI, SchemaType, Tool } from '@google/generative-ai'
+import { addMinutes, startOfMinute } from 'date-fns'
 import { env } from '../lib/env'
 import { Errors } from '../lib/errors'
 import { logger } from '../lib/logger'
@@ -184,6 +185,12 @@ export class AIService {
     try {
       const result = await chatSession.sendMessage(userMessage)
       const response = result.response
+
+      // ✅ Registrar Uso (Async)
+      if (response.usageMetadata) {
+        this.saveUsage(context, agent.id, response.usageMetadata)
+      }
+
       const functionCalls = response.functionCalls()
 
       if (functionCalls && functionCalls.length > 0) {
@@ -192,7 +199,8 @@ export class AIService {
           call.name,
           (call.args || {}) as Record<string, unknown>,
           context,
-          services
+          services,
+          businessHours
         )
 
         const nextPart = await chatSession.sendMessage([
@@ -200,6 +208,11 @@ export class AIService {
             functionResponse: { name: call.name, response: toolResult },
           },
         ])
+
+        // ✅ Registrar Uso da Resposta da Função (Async)
+        if (nextPart.response.usageMetadata) {
+          this.saveUsage(context, agent.id, nextPart.response.usageMetadata)
+        }
 
         return { response: nextPart.response.text(), action: call.name }
       }
@@ -346,9 +359,15 @@ export class AIService {
     name: string,
     args: Record<string, unknown>,
     context: ChatContext,
-    services: { id: string; name: string; duration: number }[]
+    services: { id: string; name: string; duration: number }[],
+    businessHours: { dayOfWeek: number; startTime: string; endTime: string; isOpen: boolean }[]
   ): Promise<ToolExecutionResult> {
     try {
+      if (name === 'checkAvailability') {
+        const { date } = args as { date: string }
+        return await this.checkAvailability(context.tenantId, date, businessHours)
+      }
+
       switch (name) {
         case 'listMyAppointments': {
           const apps = await this.appointmentService.listUpcoming(
@@ -419,7 +438,6 @@ export class AIService {
           return { status: 'error', message: 'Ferramenta desconhecida.' }
       }
     } catch (error: unknown) {
-      // Tratamento amigável de erros conhecidos
       const errMsg = error instanceof Error ? error.message : ''
       if (errMsg.includes('passado')) {
         return {
@@ -430,6 +448,83 @@ export class AIService {
       }
       const errorMessage = error instanceof Error ? error.message : 'Erro ao processar'
       return { status: 'error', message: errorMessage }
+    }
+  }
+
+  // --- FERRAMENTAS INTERNAS (CUSTOM) ---
+
+  private async checkAvailability(
+    tenantId: string,
+    dateStr: string,
+    businessHours: { dayOfWeek: number; startTime: string; endTime: string; isOpen: boolean }[]
+  ): Promise<ToolExecutionResult> {
+    try {
+      const requestedDate = new Date(dateStr)
+      if (isNaN(requestedDate.getTime())) return { status: 'error', message: 'Data inválida.' }
+
+      const dayOfWeek = requestedDate.getDay() // 0 = Domingo
+      const hourConfig = businessHours.find((h) => h.dayOfWeek === dayOfWeek)
+
+      if (!hourConfig || !hourConfig.isOpen) {
+        return { status: 'success', message: 'Estamos fechados neste dia.' }
+      }
+
+      // Verificação simples de horário (HH:mm)
+      const timeString = requestedDate.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      // Ajuste simples para comparação de string de hora
+      // Nota: Idealmente usaríamos date-fns para comparação de hora, mas string compare funciona para formato HH:mm fixo
+      if (timeString < hourConfig.startTime || timeString > hourConfig.endTime) {
+        return {
+          status: 'success',
+          message: `Fora do horário de atendimento (${hourConfig.startTime} - ${hourConfig.endTime}).`,
+        }
+      }
+
+      // Verificar conflito de agendamento
+      const startTime = startOfMinute(requestedDate)
+      const endTime = addMinutes(startTime, 30)
+
+      const conflict = await prisma.appointment.findFirst({
+        where: {
+          tenantId,
+          status: 'SCHEDULED',
+          AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
+        },
+      })
+
+      if (conflict) {
+        return { status: 'success', message: 'Horário indisponível (já reservado).' }
+      }
+
+      return { status: 'success', message: 'Horário disponível!' }
+    } catch (e) {
+      return { status: 'error', message: 'Erro ao verificar disponibilidade.' }
+    }
+  }
+
+  // --- REGISTRO DE USO ---
+  private async saveUsage(
+    context: ChatContext,
+    agentId: string,
+    usage: { promptTokenCount: number; candidatesTokenCount: number; totalTokenCount: number }
+  ) {
+    try {
+      await prisma.usageRecord.create({
+        data: {
+          tenantId: context.tenantId,
+          agentId: agentId,
+          customerId: context.customerId,
+          model: this.MODEL_NAME,
+          inputTokens: usage.promptTokenCount,
+          outputTokens: usage.candidatesTokenCount || 0,
+          totalTokens: usage.totalTokenCount,
+        },
+      })
+    } catch (error) {
+      logger.error({ error }, '❌ Erro ao salvar registro de uso de tokens')
     }
   }
 
