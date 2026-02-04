@@ -178,7 +178,7 @@ export class WhatsAppWorker {
     })
   }
 
-  private async stopSession(sessionId: string): Promise<void> {
+  private async stopSession(sessionId: string, persist = true): Promise<void> {
     const session = this.sessions.get(sessionId)
 
     if (session) {
@@ -196,7 +196,9 @@ export class WhatsAppWorker {
       phoneNumber: null,
       sessionName: '',
     })
-    await this.persistStatus(sessionId, 'DISCONNECTED')
+    if (persist) {
+      await this.persistStatus(sessionId, 'DISCONNECTED')
+    }
 
     logger.info({ sessionId }, '🛑 [Worker] Sessão parada')
   }
@@ -410,12 +412,19 @@ export class WhatsAppWorker {
     // Determina qual agente usar
     let agentIdToUse = agentId
     if (!agentIdToUse) {
+      logger.debug({ tenantId }, '🔍 [Worker] Sessão sem agente vinculado, buscando padrão...')
       const anyAgent = await prisma.agent.findFirst({
         where: { tenantId, isActive: true },
       })
       agentIdToUse = anyAgent?.id
     }
-    if (!agentIdToUse) return
+
+    if (!agentIdToUse) {
+      logger.warn({ tenantId, phone }, '⚠️ [Worker] Nenhum agente ativo encontrado para responder.')
+      return
+    }
+
+    logger.debug({ phone, agentId: agentIdToUse }, '🤖 [Worker] Enviando para agente...')
 
     // Carrega histórico
     const historyRaw = await prisma.message.findMany({
@@ -448,6 +457,7 @@ export class WhatsAppWorker {
 
     // Envia resposta
     if (aiRes.response) {
+      logger.info({ phone, response: aiRes.response }, '🤖 [Worker] Resposta da IA gerada')
       await socket.sendMessage(remoteJid, { text: aiRes.response })
 
       await prisma.message.create({
@@ -458,6 +468,8 @@ export class WhatsAppWorker {
           content: aiRes.response,
         },
       })
+    } else {
+      logger.info({ phone }, '🤖 [Worker] IA não retornou resposta (silêncio).')
     }
   }
 
@@ -493,9 +505,9 @@ export class WhatsAppWorker {
   async shutdown(): Promise<void> {
     logger.info('🛑 Parando WhatsApp Worker...')
 
-    // Para todas as sessões
+    // Para todas as sessões (sem persistir desconexão no banco, para permitir restore)
     for (const [sessionId] of this.sessions) {
-      await this.stopSession(sessionId)
+      await this.stopSession(sessionId, false)
     }
 
     await this.worker.close()
