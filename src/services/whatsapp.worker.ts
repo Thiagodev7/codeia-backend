@@ -32,6 +32,8 @@ import { WHATSAPP_SESSIONS_HASH, WHATSAPP_STATUS_CHANNEL, WhatsAppJobData } from
 import { redis } from '../lib/redis'
 import { AIService } from './ai.service'
 
+const MAX_RECONNECTION_ATTEMPTS = 5
+
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
@@ -48,6 +50,7 @@ interface ActiveSession {
   tenantId: string
   agentId?: string | null
   sessionName: string
+  retryCount: number
 }
 
 // ---------------------------------------------------------------------------
@@ -112,8 +115,9 @@ export class WhatsAppWorker {
     sessionId: string
     sessionName: string
     agentId?: string | null
+    retryCount?: number
   }): Promise<void> {
-    const { tenantId, sessionId, sessionName, agentId } = params
+    const { tenantId, sessionId, sessionName, agentId, retryCount = 0 } = params
 
     // Evita duplicação
     if (this.sessions.has(sessionId)) {
@@ -159,6 +163,7 @@ export class WhatsAppWorker {
       tenantId,
       agentId,
       sessionName,
+      retryCount,
     })
 
     // Event Handlers
@@ -270,6 +275,9 @@ export class WhatsAppWorker {
         sessionName: session.sessionName,
       })
       await this.persistStatus(sessionId, 'CONNECTED')
+
+      // Reset retry count on successful connection
+      session.retryCount = 0
     }
 
     if (connection === 'close') {
@@ -282,13 +290,30 @@ export class WhatsAppWorker {
       this.sessions.delete(sessionId)
 
       if (shouldReconnect) {
-        logger.info({ sessionId }, '🔄 [Worker] Reconectando em 2s...')
+        if (session.retryCount >= MAX_RECONNECTION_ATTEMPTS) {
+          logger.warn(
+            { sessionId },
+            `🛑 [Worker] Limite de tentativas de reconexão excedido (${MAX_RECONNECTION_ATTEMPTS}). Parando sessão.`
+          )
+          this.publishStatus(sessionId, {
+            status: 'DISCONNECTED',
+            qrCode: null,
+            phoneNumber: null,
+            sessionName: session.sessionName,
+          })
+          await this.persistStatus(sessionId, 'DISCONNECTED')
+          return
+        }
+
+        const nextRetry = session.retryCount + 1
+        logger.info({ sessionId, attempt: nextRetry }, '🔄 [Worker] Reconectando em 2s...')
         setTimeout(() => {
           this.startSession({
             tenantId: session.tenantId,
             sessionId,
             sessionName: session.sessionName,
             agentId: session.agentId,
+            retryCount: nextRetry,
           })
         }, 2000)
       } else {
