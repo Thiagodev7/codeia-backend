@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { ServiceService } from '../services/service.service'
 import { Errors } from '../lib/errors'
+import { ServiceService } from '../services/service.service'
 
 export const serviceRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', async (req) => {
@@ -40,7 +40,8 @@ export const serviceRoutes: FastifyPluginAsyncZod = async (app) => {
         security: [{ bearerAuth: [] }],
         body: z.object({
           name: z.string().min(1),
-          description: z.string().nullable().optional(), // Aceita null
+          description: z.string().nullable().optional(),
+          aiDescription: z.string().nullable().optional(), // ✅ Novo campo
           price: z.number().min(0),
           duration: z.number().min(1),
         }),
@@ -64,7 +65,8 @@ export const serviceRoutes: FastifyPluginAsyncZod = async (app) => {
         params: z.object({ id: z.string() }),
         body: z.object({
           name: z.string().optional(),
-          description: z.string().nullable().optional(), // Aceita null
+          description: z.string().nullable().optional(),
+          aiDescription: z.string().nullable().optional(), // ✅ Novo campo
           price: z.number().optional(),
           duration: z.number().optional(),
           isActive: z.boolean().optional(),

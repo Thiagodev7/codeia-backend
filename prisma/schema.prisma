@@ -127,16 +127,17 @@ model Message {
 }
 
 model Service {
-  id           String        @id @default(uuid())
-  tenantId     String
-  name         String
-  description  String?
-  price        Decimal       @default(0.0)
-  duration     Int
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  appointments Appointment[]
+  id            String        @id @default(uuid())
+  tenantId      String
+  name          String
+  description   String?
+  aiDescription String?       @db.Text
+  price         Decimal       @default(0.0)
+  duration      Int
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  appointments  Appointment[]
 
   @@index([tenantId, isActive])
   @@map("services")
@@ -181,6 +182,10 @@ model TenantSettings {
   // businessHours Json?  <-- REMOVIDO EM FAVOR DA NOVA TABELA
   reminderEnabled Boolean @default(false)
   reminderMinutes Int     @default(60)
+
+  // Serviços Genéricos
+  allowGenericServices   Boolean @default(false)
+  genericServiceDuration Int     @default(30)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

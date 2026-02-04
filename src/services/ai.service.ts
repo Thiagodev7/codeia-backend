@@ -140,15 +140,27 @@ export class AIService {
     const agent = await prisma.agent.findUnique({ where: { id: agentId } })
     if (!agent || !agent.isActive) return { response: null }
 
-    // 1. Configurações (Fuso Horário)
+    // 1. Configurações (Fuso Horário e Horários de Funcionamento)
     const settings = await prisma.tenantSettings.findUnique({
       where: { tenantId: context.tenantId },
+    })
+
+    const businessHours = await prisma.businessHour.findMany({
+      where: { tenantId: context.tenantId },
+      orderBy: { dayOfWeek: 'asc' },
     })
 
     // 2. Serviços (convertendo Decimal para number)
     const servicesData = await prisma.service.findMany({
       where: { tenantId: context.tenantId, isActive: true },
-      select: { id: true, name: true, duration: true, price: true, description: true },
+      select: {
+        id: true,
+        name: true,
+        duration: true,
+        price: true,
+        description: true,
+        aiDescription: true,
+      },
     })
     const services = servicesData.map((s) => ({ ...s, price: Number(s.price) }))
 
@@ -158,7 +170,7 @@ export class AIService {
       context,
       services,
       settings,
-      (settings as any)?.businessHours
+      businessHours
     )
 
     const model = this.genAI.getGenerativeModel({
@@ -205,13 +217,38 @@ export class AIService {
   private buildSystemPrompt(
     instructions: string,
     context: ChatContext,
-    services: { id: string; name: string; duration: number; price: number }[],
-    settings: { timezone?: string | null; [key: string]: unknown } | null,
+    services: {
+      id: string
+      name: string
+      duration: number
+      price: number
+      aiDescription?: string | null
+    }[],
+    settings: {
+      timezone?: string | null
+      allowGenericServices?: boolean
+      genericServiceDuration?: number
+      [key: string]: unknown
+    } | null,
     businessHours: { dayOfWeek: number; startTime: string; endTime: string; isOpen: boolean }[]
   ): string {
     const servicesList = services
-      .map((s) => `🔹 ${s.name} (${s.duration}min) - R$ ${Number(s.price).toFixed(2)}`)
+      .map((s) => {
+        const desc = s.aiDescription ? `\n      > 📝 Regra: ${s.aiDescription}` : ''
+        return `🔹 ${s.name} (${s.duration}min) - R$ ${Number(s.price).toFixed(2)}${desc}`
+      })
       .join('\n')
+
+    // Lógica de Serviços Genéricos
+    let genericServiceInstruction =
+      '⚠️ Você só pode agendar os serviços listados acima. Se o cliente pedir algo fora da lista, diga educadamente que não oferecem este serviço.'
+
+    if (settings?.allowGenericServices) {
+      const duration = settings.genericServiceDuration || 30
+      genericServiceInstruction = `✅ Você PODE agendar serviços não listados acima (ex: Barba, Sobrancelha). 
+      Para serviços não listados, use o nome que o cliente pediu e considere a duração padrão de ${duration} minutos.
+      Se o cliente perguntar o preço, diga que é sob consulta no local.`
+    }
 
     // FORMATAÇÃO DE HORÁRIOS
     // Se o novo formato array vier do banco, converte para objeto ou usa direto.
@@ -277,7 +314,10 @@ export class AIService {
       Nome: ${context.customerName}
 
       === 💰 SERVIÇOS ===
+      📋 LISTA DE SERVIÇOS DISPONÍVEIS:
       ${servicesList || 'Nenhum serviço cadastrado.'}
+
+      ${genericServiceInstruction}
 
       === 🚨 REGRAS DE DATA E HORA (CRÍTICO) ===
       1. **Hoje é:** ${dateStr}.

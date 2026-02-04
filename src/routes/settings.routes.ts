@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { SettingsService } from '../services/settings.service'
 import { Errors } from '../lib/errors'
+import { SettingsService } from '../services/settings.service'
 
 export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', async (req) => {
@@ -51,6 +51,10 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
             // ✅ NOVOS CAMPOS (Correção Principal)
             reminderEnabled: z.boolean(),
             reminderMinutes: z.number(),
+
+            // Serviços Genéricos
+            allowGenericServices: z.boolean(),
+            genericServiceDuration: z.number(),
           }),
         },
       },
@@ -64,6 +68,8 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         ...data,
         reminderEnabled: data.reminderEnabled ?? false,
         reminderMinutes: data.reminderMinutes ?? 60,
+        allowGenericServices: data.allowGenericServices ?? false,
+        genericServiceDuration: data.genericServiceDuration ?? 30,
       }
     }
   )
@@ -104,6 +110,10 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
           // ✅ NOVOS CAMPOS NO BODY (Correção Principal)
           reminderEnabled: z.boolean().optional(),
           reminderMinutes: z.number().optional(),
+
+          // Serviços Genéricos
+          allowGenericServices: z.boolean().optional(),
+          genericServiceDuration: z.number().optional(),
         }),
       },
     },
