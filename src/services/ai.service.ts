@@ -214,7 +214,16 @@ export class AIService {
           this.saveUsage(context, agent.id, nextPart.response.usageMetadata)
         }
 
-        return { response: nextPart.response.text(), action: call.name }
+        const modelResponse = nextPart.response.text()
+
+        // FAILSAFE: Se o modelo ficar silêncio após a ferramenta, usamos a msg da ferramenta
+        const finalResponse =
+          modelResponse ||
+          (typeof toolResult.message === 'string'
+            ? toolResult.message
+            : 'Ação concluída com sucesso.')
+
+        return { response: finalResponse, action: call.name }
       }
 
       return { response: response.text() }
@@ -333,6 +342,20 @@ export class AIService {
 
       ${genericServiceInstruction}
 
+      === 🛠️ FERRAMENTAS ESPECIAIS (VOCÊ TEM PODERES) ===
+      Você possui ferramentas poderosas para gerenciar a agenda. USE-AS SEMPRE QUE NECESSÁRIO:
+      1. **VER AGENDAMENTOS:** Se o cliente perguntar "Tenho horário?" ou "Quando agendei?", execute \`listMyAppointments\`. Não diga que não sabe/não pode. Você PODE.
+      2. **CANCELAR:** Se o cliente pedir para cancelar, execute \`cancelAppointment\`.
+      3. **REAGENDAR:** Se o cliente quiser mudar o horário, execute \`rescheduleAppointment\`.
+      
+      > **🚫 REGRA DE OURO (UX): NUNCA PEÇA O ID PARA O CLIENTE.**
+      > O cliente não sabe o ID. Se ele pedir para cancelar "o das 18h", você deve:
+      > 1. Executar \`listMyAppointments\` (se já não tiver a lista recente).
+      > 2. Procurar na lista qual agendamento é às 18h.
+      > 3. Pegar o ID dele internamente.
+      > 4. Executar \`cancelAppointment\` usando esse ID que você encontrou.
+      > Se houver ambiguidade (dois horários iguais), liste as opções para ele confirmar (sem mostrar IDs, mostre datas/serviços).
+
       ${
         settings?.aiKnowledge
           ? `
@@ -374,9 +397,29 @@ export class AIService {
             context.tenantId,
             context.customerId
           )
+
+          if (!apps.length) {
+            return { status: 'success', message: 'Nenhum agendamento futuro encontrado.' }
+          }
+
+          // Formata para a IA entender claramente, mesmo sem 'service' lincado
+          const formattedList = apps
+            .map((app) => {
+              const dateStr = app.startTime.toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                weekday: 'long',
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+              return `- ID: ${app.id}\n  Serviço: ${app.title}\n  Quando: ${dateStr}`
+            })
+            .join('\n\n')
+
           return {
             status: 'success',
-            message: apps.length ? JSON.stringify(apps) : 'Nenhum agendamento.',
+            message: `Aqui estão os agendamentos encontrados:\n\n${formattedList}`,
           }
         }
         case 'cancelAppointment': {
@@ -394,13 +437,49 @@ export class AIService {
             typeof args.appointmentId === 'string' ? args.appointmentId : String(args.appointmentId)
           const newDateTime =
             typeof args.newDateTime === 'string' ? args.newDateTime : String(args.newDateTime)
+
+          const targetDate = new Date(newDateTime)
+
+          // Validação extra de segurança
+          if (isNaN(targetDate.getTime())) {
+            return { status: 'error', message: 'Data/Hora inválida.' }
+          }
+
+          // --- VALIDAÇÃO RÍGIDA DE HORÁRIO DE FUNCIONAMENTO ---
+          const dayOfWeek = targetDate.getDay()
+          const hourConfig = businessHours.find((h) => h.dayOfWeek === dayOfWeek)
+
+          if (!hourConfig || !hourConfig.isOpen) {
+            return {
+              status: 'error',
+              message: `Erro: O estabelecimento está fechado neste dia (${targetDate.toLocaleDateString('pt-BR', { weekday: 'long' })}).`,
+            }
+          }
+
+          const timeString = targetDate.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'America/Sao_Paulo',
+          })
+
+          if (timeString < hourConfig.startTime || timeString > hourConfig.endTime) {
+            return {
+              status: 'error',
+              message: `Erro: Horário indisponível. O funcionamento é das ${hourConfig.startTime} às ${hourConfig.endTime}.`,
+            }
+          }
+          // ----------------------------------------------------
+
           const updated = await this.appointmentService.rescheduleAppointment(
             context.tenantId,
             appointmentId,
-            new Date(newDateTime),
+            targetDate,
             context.customerId
           )
-          return { status: 'success', message: `Reagendado para ${updated.startTime}.` }
+          return {
+            status: 'success',
+            message: `Reagendado para ${updated.startTime.toLocaleString('pt-BR')}.`,
+          }
         }
         case 'createAppointment': {
           const serviceName =

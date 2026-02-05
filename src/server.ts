@@ -10,6 +10,7 @@ import {
 } from 'fastify-type-provider-zod'
 
 import { aiRoutes } from './routes/ai.routes'
+import { analyticsRoutes } from './routes/analytics.routes'
 import { appointmentRoutes } from './routes/appointment.routes'
 import { authRoutes } from './routes/auth.routes'
 import { crmRoutes } from './routes/crm.routes'
@@ -59,6 +60,7 @@ app.register(tenantRoutes)
 app.register(aiRoutes)
 app.register(serviceRoutes)
 app.register(crmRoutes)
+app.register(analyticsRoutes)
 app.register(appointmentRoutes)
 app.register(settingsRoutes)
 
